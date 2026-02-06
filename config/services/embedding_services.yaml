@@ -1,0 +1,12 @@
+# Embedding服务配置
+# 此文件定义了系统可用的Embedding服务
+
+local:
+  name: "Qwen3-Embedding-4B"  # 服务名称
+  api_base: "http://localhost:5000/v1"  # API基础URL，与Roles.md一致
+  api_key: "sk-ccahwXzZsrbLaXIidBQsnv8FVIbk8Y1BjgUdnFiHjFiuGSW3"  # API密钥，与Roles.md一致
+  models:  # 可用的模型列表
+  - "Qwen3-Embedding-4B"
+  default_model: "Qwen3-Embedding-4B"  # 默认使用的模型，与Roles.md一致
+  timeout: 300  # API调用超时时间（秒），设置为5分钟以确保有充分的等待时间
+  dimensions: 1024  # 向量维度，默认1024

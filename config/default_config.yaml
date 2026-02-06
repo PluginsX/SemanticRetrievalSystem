@@ -1,0 +1,87 @@
+# 集中式主配置文件
+# 整合所有配置项到一个文件中，便于管理
+app:
+  name: "语义检索系统"
+  version: "1.0.0"
+  environment: "development"
+  host: "0.0.0.0"
+  port: 8001
+  log_level: "INFO"
+  debug: true
+
+database:
+  sqlite:
+    path: "./data/sqlite/semantic_retrieval.db"
+    timeout: 30000.0
+  chroma:
+    persist_directory: "./data/chroma"
+    collection_name: "artifact_embeddings"
+
+ai_services:
+  llm:
+    provider: "openai_compatible"
+    max_retries: 3
+    base_url: "http://localhost:11434/v1"
+    api_key: "ollama"
+    default_model: "qwen2:7b"
+  embedding:
+    provider: "openai_compatible"
+    base_url: "http://localhost:5000/v1"
+    api_key: "sk-ccahwXzZsrbLaXIidBQsnv8FVIbk8Y1BjgUdnFiHjFiuGSW3"
+    default_model: "Qwen3-Embedding-4B"
+    dimensions: 1024
+    timeout: 300
+    max_retries: 3
+
+retrieval:
+  default_top_k: 5
+  similarity_threshold: 0.7
+  max_chunk_size: 1000
+  overlap_size: 100
+  batch_size: 10
+
+web_service:
+  enabled: true
+  static_files:
+    directory: "./app/web/static"
+    mount_path: "/static"
+  templates:
+    directory: "./app/web/templates"
+  cors:
+    allowed_origins:
+      - "*"
+
+security:
+  api_key_secret: "your-secret-key-here"
+  jwt_secret: "your-jwt-secret-here"
+
+cache:
+  enabled: false
+  ttl_seconds: 3600
+  redis:
+    host: "localhost"
+    port: 6379
+
+file_processing:
+  supported_formats:
+    - ".txt"
+    - ".pdf"
+    - ".docx"
+    - ".html"
+  max_file_size_mb: 50
+  temp_directory: "./temp"
+
+services:
+  llm_services:
+    openai-compatible:
+      api_base: "http://localhost:11434/v1"
+      api_key: "ollama"
+      default_model: "qwen2:7b"
+      timeout: 300
+  embedding_services:
+    openai-compatible:
+      default_model: "Qwen3-Embedding-4B"
+      dimensions: 1024
+      api_base: "http://localhost:5000/v1"
+      api_key: "sk-ccahwXzZsrbLaXIidBQsnv8FVIbk8Y1BjgUdnFiHjFiuGSW3"
+      timeout: 300

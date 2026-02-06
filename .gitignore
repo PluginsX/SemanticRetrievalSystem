@@ -83,7 +83,7 @@ profile_default/
 ipython_config.py
 
 # pyenv
-#   For a library or package, you might want to ignore these files since the code is
+#   For a library or package, you might want to ignore these files since code is
 #   intended to run in multiple environments; otherwise, check them in:
 # .python-version
 
@@ -120,7 +120,7 @@ ipython_config.py
 # pixi
 #   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
 #pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
+#   Pixi creates a virtual environment in .pixi directory, just like venv module creates one
 #   in the .venv directory. It is recommended not to include this directory in version control.
 .pixi
 
@@ -172,7 +172,7 @@ cython_debug/
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
+#  option (not recommended) you can uncomment the following to ignore entire idea folder.
 #.idea/
 
 # Abstra
@@ -185,7 +185,7 @@ cython_debug/
 #  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
+#  you could uncomment the following to ignore entire vscode folder
 # .vscode/
 
 # Ruff stuff:
@@ -205,3 +205,56 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# 项目特定的忽略规则
+
+# 数据库文件和目录
+data/
+*.db
+*.sqlite
+*.sqlite3
+data/chroma/
+data/sqlite/
+
+# ChromaDB临时文件
+chroma_data/
+Test/chroma_data/
+
+# 前端构建产物
+app/web/frontend/node_modules/
+app/web/frontend/dist/
+app/web/frontend/.vite/
+
+# 测试数据
+Test/test.json
+test.json
+
+# 日志文件
+*.log
+logs/
+app/logs/
+
+# 配置文件（包含敏感信息）
+config/current_config.yaml
+config/production.yaml
+
+# 向量存储临时文件
+vector_store.json
+
+# IDE和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup

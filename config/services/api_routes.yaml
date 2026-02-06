@@ -1,0 +1,25 @@
+# API路由配置
+search:
+  enabled: true
+  rate_limit: 100
+  require_auth: false
+  timeout: 30
+
+artifacts:
+  enabled: true
+  rate_limit: 50
+  require_auth: false
+  max_upload_size: 10485760  # 10MB
+
+system:
+  enabled: true
+  rate_limit: 200
+  require_auth: false
+
+admin:
+  enabled: true
+  rate_limit: 10
+  require_auth: true
+  auth_required_endpoints:
+    - "/admin/*"
+    - "/api/v1/config/*"
