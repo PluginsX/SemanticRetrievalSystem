@@ -55,17 +55,10 @@ async def clear_database_logs():
     log_file = Path("./logs/Database.log")
     
     try:
-        if log_file.exists():
-            # 创建备份
-            backup_file = log_file.with_suffix('.log.backup')
-            # 如果备份文件已存在，先删除它
-            if backup_file.exists():
-                backup_file.unlink()
-            # 只有当日志文件非空时才创建备份
-            if log_file.stat().st_size > 0:
-                log_file.rename(backup_file)
+        # 确保logs目录存在
+        log_file.parent.mkdir(exist_ok=True)
         
-        # 创建新的空日志文件
+        # 直接清空文件内容
         with open(log_file, 'w', encoding='utf-8-sig') as f:
             f.write("")
         
@@ -80,17 +73,10 @@ async def clear_server_logs():
     log_file = Path("./logs/Server.log")
     
     try:
-        if log_file.exists():
-            # 创建备份
-            backup_file = log_file.with_suffix('.log.backup')
-            # 如果备份文件已存在，先删除它
-            if backup_file.exists():
-                backup_file.unlink()
-            # 只有当日志文件非空时才创建备份
-            if log_file.stat().st_size > 0:
-                log_file.rename(backup_file)
+        # 确保logs目录存在
+        log_file.parent.mkdir(exist_ok=True)
         
-        # 创建新的空日志文件
+        # 直接清空文件内容
         with open(log_file, 'w', encoding='utf-8-sig') as f:
             f.write("")
         

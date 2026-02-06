@@ -35,7 +35,12 @@ search_results = client.search("青铜器的历史", top_k=5)
 ```
 """,
     long_description_content_type="text/markdown",
-    url="https://github.com/your-username/semantic-retrieval-client",
+    url="https://github.com/PluginsX/SemanticRetrievalSystem",
+    project_urls={
+        "Documentation": "https://semantic-retrieval-system.readthedocs.io/",
+        "Source": "https://github.com/PluginsX/SemanticRetrievalSystem/",
+        "Tracker": "https://github.com/PluginsX/SemanticRetrievalSystem/issues/"
+    },
     author="Semantic Retrieval System Team",
     author_email="contact@semantic-retrieval-system.com",
     license="MIT",
@@ -56,9 +61,4 @@ search_results = client.search("青铜器的历史", top_k=5)
     ],
     python_requires=">=3.9",
     keywords="semantic retrieval client api",
-    project_urls={
-        "Documentation": "https://semantic-retrieval-system.readthedocs.io/",
-        "Source": "https://github.com/your-username/semantic-retrieval-client/",
-        "Tracker": "https://github.com/your-username/semantic-retrieval-client/issues/"
-    }
 )

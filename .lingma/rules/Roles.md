@@ -5,6 +5,8 @@ trigger: always_on
 
 # 所有的python命令运行前必须先激活项目专用环境 .\venv\Scripts\Activate.ps1
 
+# 所有pip指令都用官方源安装依赖：-i https://pypi.org/simple --trusted-host pypi.org
+
 # LLM API
 base_url: http://localhost:11434/v1
 api_key: ollama

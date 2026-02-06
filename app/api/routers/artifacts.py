@@ -7,6 +7,7 @@ import time
 from app.models.schemas import ArtifactCreate, ArtifactResponse, ArtifactListResponse
 from app.api.dependencies import DatabaseDep
 from app.services.vector_sync import vector_sync_service
+from app.core.logger_manager import log, LogType
 
 router = APIRouter(prefix="/api/v1", tags=["资料管理"])
 
@@ -20,6 +21,7 @@ async def get_artifacts(
 ):
     """获取资料列表"""
     try:
+        log(f"SQLite - 开始获取资料列表，页码: {page}, 每页大小: {size}, 关键词: {keyword}, 分类: {category}", LogType.DATABASE, "INFO")
         cursor = db["sqlite"].cursor()
         
         # 构建查询条件
@@ -69,6 +71,8 @@ async def get_artifacts(
                 is_active=bool(row[10]) if row[10] is not None else True
             ))
         
+        log(f"SQLite - 获取资料列表成功，共 {total_count} 条，返回 {len(artifacts)} 条", LogType.DATABASE, "INFO")
+        
         return ArtifactListResponse(
             artifacts=artifacts,
             total_count=total_count,
@@ -77,12 +81,14 @@ async def get_artifacts(
         )
         
     except Exception as e:
+        log(f"SQLite - 获取资料列表失败: {str(e)}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"获取资料列表失败: {str(e)}")
 
 @router.post("/artifacts", response_model=ArtifactResponse)
 async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
     """创建新资料"""
     try:
+        log(f"SQLite - 开始创建新资料，标题: {artifact.title[:50]}...", LogType.DATABASE, "INFO")
         cursor = db["sqlite"].cursor()
         
         # 插入资料
@@ -92,6 +98,7 @@ async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
         """, (artifact.title, artifact.content, artifact.category))
         
         db["sqlite"].commit()
+        log(f"SQLite - 创建资料成功，获取插入ID", LogType.DATABASE, "INFO")
         
         # 获取插入的ID
         artifact_id = cursor.lastrowid
@@ -164,16 +171,19 @@ async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
             logger = logging.getLogger(__name__)
             logger.error(f"创建向量同步任务失败: {str(ve)}", exc_info=True)
         
+        log(f"SQLite - 创建资料完成，ID: {artifact_id}", LogType.DATABASE, "INFO")
         return response
         
     except Exception as e:
         db["sqlite"].rollback()
+        log(f"SQLite - 创建资料失败: {str(e)}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"创建资料失败: {str(e)}")
 
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactResponse)
 async def get_artifact(artifact_id: int, db: DatabaseDep):
     """获取指定资料"""
     try:
+        log(f"SQLite - 开始获取指定资料，ID: {artifact_id}", LogType.DATABASE, "INFO")
         cursor = db["sqlite"].cursor()
         cursor.execute("""
             SELECT id, title, content, category, created_at, updated_at, is_active
@@ -183,12 +193,14 @@ async def get_artifact(artifact_id: int, db: DatabaseDep):
         
         row = cursor.fetchone()
         if not row:
+            log(f"SQLite - 资料不存在，ID: {artifact_id}", LogType.DATABASE, "WARNING")
             raise HTTPException(status_code=404, detail="资料不存在")
         
         # 确保行数据足够长，防止索引越界
         if len(row) < 7:
             raise HTTPException(status_code=500, detail="数据库记录格式错误")
         
+        log(f"SQLite - 获取资料成功，ID: {artifact_id}, 标题: {row[1][:30]}...", LogType.DATABASE, "INFO")
         return ArtifactResponse(
             id=row[0],
             title=row[1],
@@ -202,18 +214,21 @@ async def get_artifact(artifact_id: int, db: DatabaseDep):
     except HTTPException:
         raise
     except Exception as e:
+        log(f"SQLite - 获取资料失败: {str(e)}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"获取资料失败: {str(e)}")
 
 @router.put("/artifacts/{artifact_id}", response_model=ArtifactResponse)
 async def update_artifact(artifact_id: int, artifact: ArtifactCreate, db: DatabaseDep):
     """更新资料"""
     try:
+        log(f"SQLite - 开始更新资料，ID: {artifact_id}, 新标题: {artifact.title[:50]}...", LogType.DATABASE, "INFO")
         cursor = db["sqlite"].cursor()
         
         # 检查资料是否存在
         cursor.execute("SELECT id, title, content, category FROM artifacts WHERE id = ? AND is_active = 1", (artifact_id,))
         existing_artifact = cursor.fetchone()
         if not existing_artifact:
+            log(f"SQLite - 资料不存在，ID: {artifact_id}", LogType.DATABASE, "WARNING")
             raise HTTPException(status_code=404, detail="资料不存在")
         
         # 更新资料
@@ -224,6 +239,7 @@ async def update_artifact(artifact_id: int, artifact: ArtifactCreate, db: Databa
         """, (artifact.title, artifact.content, artifact.category, artifact_id))
         
         db["sqlite"].commit()
+        log(f"SQLite - 更新资料成功，ID: {artifact_id}", LogType.DATABASE, "INFO")
         
         # 返回更新后的资料
         updated_artifact = await get_artifact(artifact_id, db)
@@ -253,28 +269,33 @@ async def update_artifact(artifact_id: int, artifact: ArtifactCreate, db: Databa
             logger = logging.getLogger(__name__)
             logger.error(f"创建向量同步任务失败: {str(ve)}", exc_info=True)
         
+        log(f"SQLite - 更新资料完成，ID: {artifact_id}", LogType.DATABASE, "INFO")
         return updated_artifact
         
     except HTTPException:
         raise
     except Exception as e:
         db["sqlite"].rollback()
+        log(f"SQLite - 更新资料失败: {str(e)}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"更新资料失败: {str(e)}")
 
 @router.delete("/artifacts/{artifact_id}")
 async def delete_artifact(artifact_id: int, db: DatabaseDep):
     """删除资料"""
     try:
+        log(f"SQLite - 开始删除资料，ID: {artifact_id}", LogType.DATABASE, "INFO")
         cursor = db["sqlite"].cursor()
         
         # 检查资料是否存在
         cursor.execute("SELECT id FROM artifacts WHERE id = ? AND is_active = 1", (artifact_id,))
         if not cursor.fetchone():
+            log(f"SQLite - 资料不存在，ID: {artifact_id}", LogType.DATABASE, "WARNING")
             raise HTTPException(status_code=404, detail="资料不存在")
         
         # 软删除资料
         cursor.execute("UPDATE artifacts SET is_active = 0, updated_at = datetime('now') WHERE id = ?", (artifact_id,))
         db["sqlite"].commit()
+        log(f"SQLite - 删除资料成功，ID: {artifact_id}", LogType.DATABASE, "INFO")
         
         # 异步从向量数据库中移除
         try:
@@ -302,4 +323,5 @@ async def delete_artifact(artifact_id: int, db: DatabaseDep):
         raise
     except Exception as e:
         db["sqlite"].rollback()
+        log(f"SQLite - 删除资料失败: {str(e)}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"删除资料失败: {str(e)}")

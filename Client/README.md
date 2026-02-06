@@ -12,7 +12,14 @@
 
 ## 安装方法
 
-### 方法一：直接安装
+### 方法一：从 PyPI 安装（推荐）
+
+```bash
+# 直接从 PyPI 安装
+pip install semantic-retrieval-client
+```
+
+### 方法二：直接安装
 
 ```bash
 # 进入 Client 目录
@@ -22,9 +29,15 @@ cd e:\Project\Python\SemanticRetrievalSystem\Client
 pip install -e .
 ```
 
-### 方法二：作为依赖添加
+### 方法三：作为依赖添加
 
 在项目的 `requirements.txt` 文件中添加：
+
+```
+semantic-retrieval-client
+```
+
+或者使用本地路径：
 
 ```
 semantic-retrieval-client @ file:///e:/Project/Python/SemanticRetrievalSystem/Client

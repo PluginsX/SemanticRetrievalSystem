@@ -12,8 +12,8 @@ try:
     from chromadb.config import Settings
     CHROMA_AVAILABLE = True
 except ImportError:
-    CHROMA_AVAILABLE = False
-    log("ChromaDB未安装或不可用，向量搜索功能将被禁用", LogType.SERVER, "WARNING")
+        CHROMA_AVAILABLE = False
+        log("ChromaDB - ChromaDB未安装或不可用，向量搜索功能将被禁用", LogType.DATABASE, "WARNING")
 
 from .config import config
 
@@ -46,7 +46,7 @@ class DatabaseManager:
                         if full_config and 'database' in full_config and 'sqlite' in full_config['database']:
                             sqlite_config.update(full_config['database']['sqlite'])
                 except Exception as e:
-                    log(f"读取配置文件失败: {e}", LogType.SERVER, "ERROR")
+                    log(f"SQLite - 读取配置文件失败: {e}", LogType.DATABASE, "ERROR")
             
             self.sqlite_conn = sqlite3.connect(
                 config.SQLITE_DB_PATH,
@@ -234,11 +234,11 @@ class DatabaseManager:
                     # 检查集合是否使用了预计算的向量
                     collection_metadata = existing_collection.metadata
                     if collection_metadata and collection_metadata.get("use_precomputed_embeddings") == "true":
-                        log("使用现有的ChromaDB集合，已配置为使用预计算的向量", LogType.SERVER, "INFO")
+                        log("ChromaDB - 使用现有的ChromaDB集合，已配置为使用预计算的向量", LogType.DATABASE, "INFO")
                         self.collection = existing_collection
                     else:
                         # 集合存在但配置不正确，删除并重新创建
-                        log("现有ChromaDB集合配置不正确，重新创建", LogType.SERVER, "WARNING")
+                        log("ChromaDB - 现有ChromaDB集合配置不正确，重新创建", LogType.DATABASE, "WARNING")
                         self.chroma_client.delete_collection(name="artifact_embeddings")
                         # 重新创建集合，使用预计算的向量
                         self.collection = self.chroma_client.create_collection(
@@ -248,7 +248,7 @@ class DatabaseManager:
                                 "use_precomputed_embeddings": "true"
                             }
                         )
-                        log("重新创建ChromaDB集合成功，使用预计算的向量", LogType.SERVER, "INFO")
+                        log("ChromaDB - 重新创建ChromaDB集合成功，使用预计算的向量", LogType.DATABASE, "INFO")
                 except:
                     # 集合不存在，创建新的
                     # 有些版本的ChromaDB使用不同的异常类型
@@ -260,10 +260,10 @@ class DatabaseManager:
                             "use_precomputed_embeddings": "true"
                         }
                     )
-                    log("创建ChromaDB集合成功，使用预计算的向量", LogType.SERVER, "INFO")
+                    log("ChromaDB - 创建ChromaDB集合成功，使用预计算的向量", LogType.DATABASE, "INFO")
                     
             except Exception as e:
-                log(f"ChromaDB初始化失败: {e}", LogType.SERVER, "ERROR")
+                log(f"ChromaDB - ChromaDB初始化失败: {e}", LogType.DATABASE, "ERROR")
                 self.chroma_available = False
                 return None
                 
@@ -273,7 +273,7 @@ class DatabaseManager:
         """获取所有向量数据（用于内存搜索）"""
         try:
             if not self.chroma_available or not self.collection:
-                log("ChromaDB不可用，无法获取向量数据", LogType.SERVER, "WARNING")
+                log("ChromaDB不可用，无法获取向量数据", LogType.DATABASE, "WARNING")
                 return []
             
             # 获取所有向量数据

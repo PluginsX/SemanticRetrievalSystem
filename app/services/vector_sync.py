@@ -7,6 +7,7 @@ from typing import List, Optional
 from app.services.ai_clients import embedding_client
 from app.core.database import db_manager
 from app.core.config import config
+from app.core.logger_manager import log, LogType
 
 logger = logging.getLogger(__name__)
 
@@ -33,25 +34,25 @@ class VectorSyncService:
             self.db_manager.init_chroma()
             
             if not self.db_manager.chroma_available:
-                logger.warning("ChromaDB不可用，跳过向量同步")
+                log("ChromaDB - ChromaDB不可用，跳过向量同步", LogType.DATABASE, "WARNING")
                 return False
             
             if not self.db_manager.collection:
-                logger.error("ChromaDB集合不可用，无法同步向量数据")
+                log("ChromaDB - ChromaDB集合不可用，无法同步向量数据", LogType.DATABASE, "ERROR")
                 return False
             
             # 生成向量 - 结合标题和内容
             text_to_embed = f"{title}\n\n{content}" if title and content else (title or content or "")
             
             if not text_to_embed.strip():
-                logger.warning(f"资料 {artifact_id} 内容为空，跳过向量化")
+                log(f"ChromaDB - 资料 {artifact_id} 内容为空，跳过向量化", LogType.DATABASE, "WARNING")
                 return True
             
             try:
                 # 调用外部Embedding API生成向量
                 embedding_vector = await self.embedding_client.embed(text_to_embed)
             except Exception as embed_error:
-                logger.error(f"生成向量失败，跳过向量同步: {str(embed_error)}")
+                log(f"ChromaDB - 生成向量失败，跳过向量同步: {str(embed_error)}", LogType.DATABASE, "ERROR")
                 return False
             
             # 将向量数据添加到Chroma数据库
@@ -69,14 +70,14 @@ class VectorSyncService:
                     }]
                 )
             except Exception as upsert_error:
-                logger.error(f"添加向量到数据库失败: {str(upsert_error)}")
+                log(f"ChromaDB - 添加向量到数据库失败: {str(upsert_error)}", LogType.DATABASE, "ERROR")
                 return False
             
-            logger.info(f"成功同步资料 {artifact_id} 到向量数据库")
+            log(f"ChromaDB - 成功同步资料 {artifact_id} 到向量数据库", LogType.DATABASE, "INFO")
             return True
             
         except Exception as e:
-            logger.error(f"同步资料 {artifact_id} 到向量数据库失败: {str(e)}")
+            log(f"ChromaDB - 同步资料 {artifact_id} 到向量数据库失败: {str(e)}", LogType.DATABASE, "ERROR")
             return False
     
     async def remove_artifact_from_vector_db(self, artifact_id: int):
@@ -91,21 +92,21 @@ class VectorSyncService:
             self.db_manager.init_chroma()
             
             if not self.db_manager.chroma_available:
-                logger.warning("ChromaDB不可用，跳过向量删除")
+                log("ChromaDB - ChromaDB不可用，跳过向量删除", LogType.DATABASE, "WARNING")
                 return False
             
             if not self.db_manager.collection:
-                logger.error("ChromaDB集合不可用，无法删除向量数据")
+                log("ChromaDB - ChromaDB集合不可用，无法删除向量数据", LogType.DATABASE, "ERROR")
                 return False
             
             # 从向量数据库中删除对应ID的数据
             self.db_manager.collection.delete(ids=[str(artifact_id)])
             
-            logger.info(f"成功从向量数据库删除资料 {artifact_id}")
+            log(f"ChromaDB - 成功从向量数据库中移除资料 {artifact_id}", LogType.DATABASE, "INFO")
             return True
             
         except Exception as e:
-            logger.error(f"从向量数据库删除资料 {artifact_id} 失败: {str(e)}")
+            log(f"ChromaDB - 从向量数据库中移除资料 {artifact_id} 失败: {str(e)}", LogType.DATABASE, "ERROR")
             return False
     
     async def batch_sync_artifacts_to_vector_db(self, artifacts: List[dict]):
