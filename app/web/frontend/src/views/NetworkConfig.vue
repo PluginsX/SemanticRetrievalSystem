@@ -60,8 +60,8 @@
               <el-input v-model="llmConfig.model" placeholder="例如: qwen2:7b" />
             </el-form-item>
             
-            <el-form-item label="最大上下文长度">
-              <el-input-number v-model.number="llmConfig.max_tokens" :min="1" :max="100000" />
+            <el-form-item label="API超时时间（秒）">
+              <el-input-number v-model.number="llmConfig.max_tokens" :min="1" :max="3600" />
             </el-form-item>
             
             <el-form-item>
@@ -101,6 +101,10 @@
               <el-input-number v-model.number="embeddingConfig.dimensions" :min="1" :max="10000" />
             </el-form-item>
             
+            <el-form-item label="API超时时间（秒）">
+              <el-input-number v-model.number="embeddingConfig.timeout" :min="1" :max="3600" />
+            </el-form-item>
+            
             <el-form-item>
               <el-button type="primary" @click="saveEmbeddingConfig">保存配置</el-button>
               <el-button @click="testEmbeddingConfig" :loading="testingEmbedding">测试连接</el-button>
@@ -132,11 +136,11 @@ export default {
     
     // LLM配置
     const llmConfig = reactive({
-      service_type: 'openai-compatible',
-      base_url: 'http://localhost:8080/v1',
-      api_key: '',
-      model: 'qwen2:7b',
-      max_tokens: 4096
+        service_type: 'openai-compatible',
+        base_url: 'http://localhost:8080/v1',
+        api_key: '',
+        model: 'qwen2:7b',
+        max_tokens: 300 // API超时时间（秒）
     })
     
     // Embedding配置
@@ -145,7 +149,8 @@ export default {
       base_url: 'http://localhost:8080/v1',
       api_key: '',
       model: 'Qwen3-Embedding-4B',
-      dimensions: 1024
+      dimensions: 1024,
+      timeout: 300 // API超时时间（秒）
     })
     
     const testingLlm = ref(false)
@@ -181,7 +186,8 @@ export default {
             base_url: config.data.embedding.base_url || '',
             api_key: config.data.embedding.api_key || '',
             model: config.data.embedding.model || '',
-            dimensions: config.data.embedding.dimensions || 1024
+            dimensions: config.data.embedding.dimensions || 1024,
+            timeout: config.data.embedding.timeout || 300
           })
         }
       } catch (error) {
@@ -209,6 +215,9 @@ export default {
         } else {
           ElMessage.success(response.message)
         }
+        
+        // 重新加载配置以确保前端显示最新值
+        await loadConfig()
       } catch (error) {
         console.error('保存API配置失败:', error)
         ElMessage.error('保存API配置失败: ' + error.message)
@@ -234,6 +243,9 @@ export default {
         } else {
           ElMessage.success(response.message)
         }
+        
+        // 重新加载配置以确保前端显示最新值
+        await loadConfig()
       } catch (error) {
         console.error('保存LLM配置失败:', error)
         ElMessage.error('保存LLM配置失败: ' + error.message)
@@ -268,7 +280,8 @@ export default {
             base_url: embeddingConfig.base_url,
             api_key: embeddingConfig.api_key,
             model: embeddingConfig.model,
-            dimensions: embeddingConfig.dimensions
+            dimensions: embeddingConfig.dimensions,
+            timeout: embeddingConfig.timeout
           }
         }
         
@@ -278,6 +291,9 @@ export default {
         } else {
           ElMessage.success(response.message)
         }
+        
+        // 重新加载配置以确保前端显示最新值
+        await loadConfig()
       } catch (error) {
         console.error('保存Embedding配置失败:', error)
         ElMessage.error('保存Embedding配置失败: ' + error.message)
@@ -292,7 +308,8 @@ export default {
           service_type: embeddingConfig.service_type,
           base_url: embeddingConfig.base_url,
           api_key: embeddingConfig.api_key,
-          model: embeddingConfig.model
+          model: embeddingConfig.model,
+          timeout: embeddingConfig.timeout
         })
         ElMessage.success('Embedding连接测试成功')
       } catch (error) {
@@ -309,14 +326,14 @@ export default {
     }
     
     const resetLlmConfig = () => {
-      // 重置为默认值
-      Object.assign(llmConfig, {
-        service_type: 'openai-compatible',
-        base_url: 'http://localhost:8080/v1',
-        api_key: '',
-        model: 'qwen2:7b',
-        max_tokens: 4096
-      })
+        // 重置为默认值
+        Object.assign(llmConfig, {
+            service_type: 'openai-compatible',
+            base_url: 'http://localhost:8080/v1',
+            api_key: '',
+            model: 'qwen2:7b',
+            max_tokens: 300 // API超时时间（秒）
+        })
     }
     
     const resetEmbeddingConfig = () => {
@@ -326,7 +343,8 @@ export default {
         base_url: 'http://localhost:8080/v1',
         api_key: '',
         model: 'Qwen3-Embedding-4B',
-        dimensions: 1024
+        dimensions: 1024,
+        timeout: 300 // API超时时间（秒）
       })
     }
     

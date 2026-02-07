@@ -154,7 +154,7 @@ class Config:
     
     @property
     def LLM_TIMEOUT(self) -> int:
-        return getattr(self._rt_config, 'LLM_TIMEOUT', 30)
+        return getattr(self._rt_config, 'LLM_TIMEOUT', 300)
     
     @LLM_TIMEOUT.setter
     def LLM_TIMEOUT(self, value: int):
