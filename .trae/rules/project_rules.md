@@ -27,3 +27,5 @@
 - **Base URL**: `http://127.0.0.1:11434/v1`
 - **Model ID**: `qwen2:7b`
 - **API Key**: `ollama`
+
+10. 所有涉及模型调用的接口严格按照OpenAI API规范实现

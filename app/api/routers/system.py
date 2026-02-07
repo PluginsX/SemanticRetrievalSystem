@@ -40,23 +40,43 @@ async def health_check(db: DatabaseDep):
     # 检查AI服务配置
     # 如果配置了必要的参数，则认为服务已配置好
     from app.core.config import config
-    import requests
-    from urllib.parse import urljoin
     
     # 检查LLM服务配置和可用性
-    if hasattr(config, 'OPENAI_API_KEY') and config.OPENAI_API_KEY:
-        services_status["llm_service"] = "healthy"
-    elif hasattr(config, 'LLM_API_BASE_URL') and config.LLM_API_BASE_URL:
-        # 尝试连接到本地LLM服务（如Ollama）
+    if hasattr(config, 'LLM_MODEL') and config.LLM_MODEL:
         try:
-            # 尝试访问LLM服务的tags端点（Ollama）
-            llm_url = urljoin(config.LLM_API_BASE_URL, "/api/tags")
-            response = requests.get(llm_url, timeout=5)
-            if response.status_code == 200:
-                services_status["llm_service"] = "healthy"
+            if hasattr(config, 'LLM_API_BASE_URL') and config.LLM_API_BASE_URL:
+                # 尝试调用实际的LLM API端点进行测试
+                from openai import OpenAI
+                import httpx
+                
+                client = OpenAI(
+                    base_url=config.LLM_API_BASE_URL,
+                    api_key=config.LLM_API_KEY if hasattr(config, 'LLM_API_KEY') else "test",
+                    timeout=10.0,
+                    http_client=httpx.Client(limits=httpx.Limits(max_connections=10, max_keepalive_connections=5))
+                )
+                
+                # 尝试生成一个简单的测试文本
+                test_response = client.chat.completions.create(
+                    model=config.LLM_MODEL,
+                    messages=[
+                        {"role": "system", "content": "你是一个专业的AI助手"},
+                        {"role": "user", "content": "你好"}
+                    ],
+                    max_tokens=10
+                )
+                
+                if test_response and test_response.choices:
+                    services_status["llm_service"] = "healthy"
+                else:
+                    services_status["llm_service"] = "configured"
             else:
-                services_status["llm_service"] = "configured"  # 已配置但不可用
-        except:
+                services_status["llm_service"] = "healthy"
+        except Exception as e:
+            # 记录错误日志，帮助调试
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"LLM服务健康检查失败: {str(e)}")
             services_status["llm_service"] = "configured"  # 已配置但不可用
     else:
         services_status["llm_service"] = "configured"  # 已配置但未启用
@@ -66,16 +86,35 @@ async def health_check(db: DatabaseDep):
         try:
             # 尝试连接到嵌入服务
             if hasattr(config, 'EMBEDDING_API_BASE_URL') and config.EMBEDDING_API_BASE_URL:
-                embedding_url = urljoin(config.EMBEDDING_API_BASE_URL, "/models")
-                response = requests.get(embedding_url, timeout=5)
-                if response.status_code == 200:
+                # 尝试调用实际的embedding API端点进行测试
+                from openai import OpenAI
+                import httpx
+                
+                client = OpenAI(
+                    base_url=config.EMBEDDING_API_BASE_URL,
+                    api_key=config.EMBEDDING_API_KEY if hasattr(config, 'EMBEDDING_API_KEY') else "test",
+                    timeout=10.0,
+                    http_client=httpx.Client(limits=httpx.Limits(max_connections=10, max_keepalive_connections=5))
+                )
+                
+                # 尝试生成一个简单的测试向量
+                test_response = client.embeddings.create(
+                    model=config.EMBEDDING_MODEL,
+                    input="test"
+                )
+                
+                if test_response and test_response.data:
                     services_status["embedding_service"] = "healthy"
                 else:
-                    services_status["embedding_service"] = "configured"  # 已配置但不可用
+                    services_status["embedding_service"] = "configured"
             else:
                 # 如果没有专门的嵌入API URL，假设有嵌入模型就是健康的
                 services_status["embedding_service"] = "healthy"
-        except:
+        except Exception as e:
+            # 记录错误日志，帮助调试
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"嵌入服务健康检查失败: {str(e)}")
             services_status["embedding_service"] = "configured"  # 已配置但不可用
     else:
         services_status["embedding_service"] = "configured"  # 已配置但未启用

@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo    启动脚本
+echo          基于语义的资料检索系统
 echo ========================================
-echo.
+echo .
 
 REM 检查虚拟环境是否存在
 if not exist "venv\Scripts\activate.bat" (
