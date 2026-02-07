@@ -13,54 +13,57 @@
       </template>
       
       <div class="logs-container">
-        <el-row :gutter="20">
+        <div class="logs-wrapper" ref="logsWrapperRef">
           <!-- 数据库日志 -->
-          <el-col :span="12">
-            <div class="log-panel database-log">
-              <div class="panel-header">
-                <h3>数据库日志</h3>
-                <el-tag type="info" size="small">{{ dbLogLines.length }} 行</el-tag>
-              </div>
-              <div class="log-content" ref="dbLogRef">
-                <div 
-                  v-for="(log, index) in dbLogLines" 
-                  :key="'db-' + index" 
-                  class="log-line"
-                  @dblclick="selectLogLine(log)"
-                >
-                  {{ log }}
-                </div>
+          <div class="log-panel database-log" :style="{ width: leftPanelWidth + '%' }">
+            <div class="panel-header">
+              <h3>数据库日志</h3>
+              <el-tag type="info" size="small">{{ dbLogLines.length }} 行</el-tag>
+            </div>
+            <div class="log-content" ref="dbLogRef">
+              <div 
+                v-for="(log, index) in dbLogLines" 
+                :key="'db-' + index" 
+                class="log-line"
+                @dblclick="selectLogLine(log)"
+              >
+                {{ log }}
               </div>
             </div>
-          </el-col>
+          </div>
+          
+          <!-- 分隔条 -->
+          <div 
+            class="resizer" 
+            :class="{ 'resizing': isResizing }"
+            @mousedown="startResize"
+          ></div>
           
           <!-- 服务器日志 -->
-          <el-col :span="12">
-            <div class="log-panel server-log">
-              <div class="panel-header">
-                <h3>服务器日志</h3>
-                <el-tag type="info" size="small">{{ serverLogLines.length }} 行</el-tag>
-              </div>
-              <div class="log-content" ref="serverLogRef">
-                <div 
-                  v-for="(log, index) in serverLogLines" 
-                  :key="'server-' + index" 
-                  class="log-line"
-                  @dblclick="selectLogLine(log)"
-                >
-                  {{ log }}
-                </div>
+          <div class="log-panel server-log" :style="{ width: 100 - leftPanelWidth - 1 + '%' }">
+            <div class="panel-header">
+              <h3>服务器日志</h3>
+              <el-tag type="info" size="small">{{ serverLogLines.length }} 行</el-tag>
+            </div>
+            <div class="log-content" ref="serverLogRef">
+              <div 
+                v-for="(log, index) in serverLogLines" 
+                :key="'server-' + index" 
+                class="log-line"
+                @dblclick="selectLogLine(log)"
+              >
+                {{ log }}
               </div>
             </div>
-          </el-col>
-        </el-row>
+          </div>
+        </div>
       </div>
     </el-card>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { systemApi } from '@/api'
 
@@ -71,6 +74,9 @@ export default {
     const serverLogLines = ref([])
     const dbLogRef = ref(null)
     const serverLogRef = ref(null)
+    const logsWrapperRef = ref(null)
+    const leftPanelWidth = ref(50) // 初始宽度50%
+    const isResizing = ref(false)
     
     // 加载日志数据
     const loadLogs = async () => {
@@ -170,8 +176,43 @@ export default {
       loadLogs()
     }
     
+    // 开始拖拽
+    const startResize = (e) => {
+      isResizing.value = true
+      document.addEventListener('mousemove', resize)
+      document.addEventListener('mouseup', stopResize)
+      e.preventDefault()
+    }
+    
+    // 拖拽中
+    const resize = (e) => {
+      if (!isResizing.value || !logsWrapperRef.value) return
+      
+      const wrapperRect = logsWrapperRef.value.getBoundingClientRect()
+      const offsetX = e.clientX - wrapperRect.left
+      const widthPercent = (offsetX / wrapperRect.width) * 100
+      
+      // 限制最小宽度为20%
+      if (widthPercent > 20 && widthPercent < 80) {
+        leftPanelWidth.value = widthPercent
+      }
+    }
+    
+    // 结束拖拽
+    const stopResize = () => {
+      isResizing.value = false
+      document.removeEventListener('mousemove', resize)
+      document.removeEventListener('mouseup', stopResize)
+    }
+    
     onMounted(() => {
       loadLogs()
+    })
+    
+    onUnmounted(() => {
+      // 清理事件监听器
+      document.removeEventListener('mousemove', resize)
+      document.removeEventListener('mouseup', stopResize)
     })
     
     return {
@@ -179,12 +220,16 @@ export default {
       serverLogLines,
       dbLogRef,
       serverLogRef,
+      logsWrapperRef,
+      leftPanelWidth,
+      isResizing,
       loadLogs,
       scrollToBottom,
       selectLogLine,
       clearDatabaseLogs,
       clearServerLogs,
-      refreshLogs
+      refreshLogs,
+      startResize
     }
   }
 }
@@ -210,10 +255,17 @@ export default {
   height: calc(100vh - 200px);
 }
 
+.logs-wrapper {
+  display: flex;
+  height: 100%;
+  position: relative;
+}
+
 .log-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -248,6 +300,24 @@ export default {
 .log-line:hover {
   background-color: #333;
   border-radius: 2px;
+}
+
+/* 分隔条样式 */
+.resizer {
+  width: 4px;
+  background-color: rgba(200, 200, 200, 0.3);
+  cursor: col-resize;
+  transition: background-color 0.2s;
+  margin: 0 8px;
+  border-radius: 2px;
+}
+
+.resizer:hover {
+  background-color: rgba(200, 200, 200, 0.8);
+}
+
+.resizer.resizing {
+  background-color: rgba(200, 200, 200, 1);
 }
 
 /* 为不同类型的日志添加颜色 */
