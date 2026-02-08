@@ -17,6 +17,9 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
     start_time = time.time()
     
     try:
+        # 记录用户调用API的详细参数
+        log(f"收到检索请求，参数: query='{search_request.query}', top_k={search_request.top_k}, threshold={search_request.threshold}, category_filter={search_request.category_filter}", LogType.SERVER, "INFO")
+        
         # 记录检索历史
         cursor = db["sqlite"].cursor()
         cursor.execute("""
@@ -57,6 +60,8 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
                 log(f"向量搜索执行成功，返回 {len(vector_results['documents'][0])} 个结果", LogType.SERVER, "INFO")
                 
                 # 处理向量搜索结果
+                log(f"开始处理向量搜索结果，总结果数: {len(vector_results['documents'][0])}", LogType.SERVER, "INFO")
+                
                 for i, (document, distance, metadata) in enumerate(zip(
                     vector_results['documents'][0], 
                     vector_results['distances'][0], 
@@ -65,30 +70,29 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
                     # 计算相似度（距离越小，相似度越高）
                     similarity = 1.0 / (1.0 + distance)
                     
+                    log(f"处理结果 {i+1}: distance={distance}, similarity={similarity}, threshold={search_request.threshold}", LogType.SERVER, "INFO")
+                    log(f"结果 {i+1} 的metadata: {metadata}", LogType.SERVER, "INFO")
+                    log(f"结果 {i+1} 的document片段: {document[:100]}...", LogType.SERVER, "INFO")
+                    
                     if similarity >= search_request.threshold:
                         # 从metadata中获取artifact_id
-                        artifact_id = metadata.get('artifact_id') if metadata else None
+                        artifact_id = metadata.get('artifact_id') if metadata else f'vector_{i}'
                         
-                        if artifact_id:
-                            # 查询完整的artifact信息
-                            cursor.execute("""
-                                SELECT id, title, content, category, created_at, updated_at, is_active
-                                FROM artifacts
-                                WHERE id = ? AND is_active = 1
-                            """, (artifact_id,))
-                            artifact = cursor.fetchone()
-                            
-                            if artifact:
-                                final_results.append(SearchResult(
-                                    id=artifact[0],
-                                    title=artifact[1],
-                                    content=artifact[2],
-                                    category=artifact[3],
-                                    created_at=artifact[4],
-                                    updated_at=artifact[5],
-                                    is_active=bool(artifact[6]),
-                                    similarity=similarity
-                                ))
+                        # 构建搜索结果
+                        result = SearchResult(
+                            id=artifact_id,
+                            title=metadata.get('title', f'向量结果 {i+1}') if metadata else f'向量结果 {i+1}',
+                            content=document,
+                            category=metadata.get('category', '未知') if metadata else '未知',
+                            created_at=metadata.get('created_at', datetime.now().isoformat()) if metadata else datetime.now().isoformat(),
+                            updated_at=metadata.get('updated_at', datetime.now().isoformat()) if metadata else datetime.now().isoformat(),
+                            is_active=True,
+                            similarity=similarity
+                        )
+                        log(f"添加结果 {i+1} 到最终结果列表", LogType.SERVER, "INFO")
+                        final_results.append(result)
+                    else:
+                        log(f"结果 {i+1} 相似度低于阈值，被过滤", LogType.SERVER, "INFO")
                 
                 log(f"向量搜索结果处理完成，添加了 {len(final_results)} 个结果", LogType.SERVER, "INFO")
                 
