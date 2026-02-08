@@ -170,23 +170,12 @@ class DatabaseManager:
             )
         """)
         
-        # 系统配置表
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS system_config (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT UNIQUE NOT NULL,
-                value TEXT NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+
         
         # 创建索引
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_category ON artifacts(category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_artifact_id ON chunks(artifact_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(key)")
         
         self.sqlite_conn.commit()
     
@@ -218,10 +207,18 @@ class DatabaseManager:
                     except Exception as e:
                         log(f"读取配置文件失败: {e}", LogType.SERVER, "ERROR")
                 
+                # 禁用telemetry和embedding模型，避免触发模型加载
+                import os
+                # 设置环境变量禁用telemetry和embedding模型
+                os.environ['CHROMA_ANONYMIZED_TELEMETRY'] = 'False'
+                os.environ['CHROMA_EMBEDDING_SERVICE'] = 'none'
+                os.environ['CHROMA_DISABLE_EMBEDDINGS'] = 'True'
+                os.environ['CHROMA_NO_EMBEDDINGS'] = 'True'
+                
                 self.chroma_client = chromadb.PersistentClient(
                     path=config.CHROMA_PERSIST_DIR,
                     settings=Settings(
-                        anonymized_telemetry=chroma_config['anonymized_telemetry'],
+                        anonymized_telemetry=False,
                         allow_reset=chroma_config['allow_reset']
                     )
                 )
@@ -229,7 +226,8 @@ class DatabaseManager:
                 # 检查集合是否存在
                 try:
                     existing_collection = self.chroma_client.get_collection(
-                        name="artifact_embeddings"
+                        name="artifact_embeddings",
+                        embedding_function=None
                     )
                     # 检查集合是否使用了预计算的向量
                     collection_metadata = existing_collection.metadata
@@ -246,7 +244,8 @@ class DatabaseManager:
                             metadata={
                                 "description": "语义检索系统资料向量存储",
                                 "use_precomputed_embeddings": "true"
-                            }
+                            },
+                            embedding_function=None
                         )
                         log("ChromaDB - 重新创建ChromaDB集合成功，使用预计算的向量", LogType.DATABASE, "INFO")
                 except:
@@ -258,7 +257,8 @@ class DatabaseManager:
                         metadata={
                             "description": "语义检索系统资料向量存储",
                             "use_precomputed_embeddings": "true"
-                        }
+                        },
+                        embedding_function=None
                     )
                     log("ChromaDB - 创建ChromaDB集合成功，使用预计算的向量", LogType.DATABASE, "INFO")
                     

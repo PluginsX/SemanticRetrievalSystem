@@ -118,6 +118,33 @@ width="600px"
         placeholder="请输入资料内容"
         />
     </el-form-item>
+    <el-form-item label="来源类型" prop="source_type">
+        <el-select v-model="formData.source_type" placeholder="请选择来源类型">
+            <el-option label="手动录入" value="manual" />
+            <el-option label="文件导入" value="file" />
+            <el-option label="API导入" value="api" />
+        </el-select>
+    </el-form-item>
+    <el-form-item label="来源路径" prop="source_path">
+        <el-input v-model="formData.source_path" placeholder="请输入来源路径（文件路径或URL）" />
+    </el-form-item>
+    <el-form-item label="标签" prop="tags">
+        <el-select v-model="formData.tags" multiple placeholder="请选择标签">
+            <el-option label="重要" value="重要" />
+            <el-option label="待审核" value="待审核" />
+            <el-option label="已归档" value="已归档" />
+            <el-option label="技术" value="技术" />
+            <el-option label="产品" value="产品" />
+        </el-select>
+    </el-form-item>
+    <el-form-item label="元数据" prop="metadata">
+        <el-input
+        v-model="formData.metadata_json"
+        type="textarea"
+        :rows="4"
+        placeholder='请输入元数据（JSON格式），例如：{"author": "张三", "version": "1.0"}'
+        />
+    </el-form-item>
 </el-form>
 <template #footer>
     <span class="dialog-footer">
@@ -157,7 +184,11 @@ export default {
         const formData = reactive({
             title: '',
             category: '',
-            content: ''
+            content: '',
+            source_type: '',
+            source_path: '',
+            tags: [],
+            metadata: {}
         })
         
         const formRules = {
@@ -220,6 +251,11 @@ export default {
             formData.title = artifact.title
             formData.category = artifact.category
             formData.content = artifact.content
+            formData.source_type = artifact.source_type || ''
+            formData.source_path = artifact.source_path || ''
+            formData.tags = artifact.tags ? artifact.tags.split(',').map(tag => tag.trim()) : []
+            formData.metadata = artifact.metadata ? JSON.parse(artifact.metadata) : {}
+            formData.metadata_json = artifact.metadata || ''
             showCreateDialog.value = true
         }
         
@@ -249,11 +285,32 @@ export default {
             try {
                 await formRef.value.validate()
                 
+                // 处理表单数据
+                const submitData = { ...formData }
+                
+                // 处理metadata
+                if (submitData.metadata_json) {
+                    try {
+                        submitData.metadata = JSON.parse(submitData.metadata_json)
+                    } catch (e) {
+                        ElMessage.error('元数据格式错误，请输入有效的JSON格式')
+                        return
+                    }
+                } else {
+                    submitData.metadata = {}
+                }
+                delete submitData.metadata_json
+                
+                // 处理tags
+                if (Array.isArray(submitData.tags)) {
+                    submitData.tags = submitData.tags.join(',')
+                }
+                
                 if (editingArtifact.value) {
-                    await artifactApi.updateArtifact(editingArtifact.value.id, formData)
+                    await artifactApi.updateArtifact(editingArtifact.value.id, submitData)
                     ElMessage.success('更新成功')
                 } else {
-                    await artifactApi.createArtifact(formData)
+                    await artifactApi.createArtifact(submitData)
                     ElMessage.success('创建成功')
                 }
                 
@@ -271,6 +328,11 @@ export default {
             formData.title = ''
             formData.category = ''
             formData.content = ''
+            formData.source_type = ''
+            formData.source_path = ''
+            formData.tags = []
+            formData.metadata = {}
+            formData.metadata_json = ''
         }
         
         const formatDate = (dateString) => {

@@ -11,6 +11,8 @@ import MonitoringPanel from './views/MonitoringPanel.vue'
 import SearchInterface from './views/SearchInterface.vue'
 import NetworkConfig from './views/NetworkConfig.vue'
 import LogSystem from './views/LogSystem.vue'
+import SQLiteManager from './views/SQLiteManager.vue'
+import ChromaDBManager from './views/ChromaDBManager.vue'
 
 // 路由配置
 const routes = [
@@ -20,7 +22,9 @@ const routes = [
   { path: '/search', component: SearchInterface },
   { path: '/data', component: DataManager },
   { path: '/config', component: NetworkConfig },
-  { path: '/logs', component: LogSystem }
+  { path: '/logs', component: LogSystem },
+  { path: '/sqlite', component: SQLiteManager },
+  { path: '/chromadb', component: ChromaDBManager }
 ]
 
 const router = createRouter({

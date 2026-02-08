@@ -10,7 +10,7 @@ import logging
 
 from app.core.config import config
 from app.core.database import db_manager
-from app.api.routers import system, artifacts, search, logs
+from app.api.routers import system, artifacts, search, logs, database
 from app.api.routers import config as config_router
 from app.core.config_hot_reload import set_fastapi_app, set_config_instance, register_config_change_listener
 
@@ -82,6 +82,7 @@ app.include_router(artifacts.router)
 app.include_router(search.router)
 app.include_router(config_router.router)
 app.include_router(logs.router)
+app.include_router(database.router)
 
 # 添加CORS中间件
 if config.WEB_SERVICE_ENABLED:

@@ -35,6 +35,14 @@
             <el-icon><Tickets /></el-icon>
             <span>日志系统</span>
           </el-menu-item>
+          <el-menu-item index="/sqlite">
+            <el-icon><Postcard /></el-icon>
+            <span>SQLite管理</span>
+          </el-menu-item>
+          <el-menu-item index="/chromadb">
+            <el-icon><TrendCharts /></el-icon>
+            <span>ChromaDB管理</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
 
@@ -79,7 +87,9 @@ export default {
       '/search': '检索测试界面',
       '/data': '资料管理界面',
       '/config': '网络配置',
-      '/logs': '日志系统'
+      '/logs': '日志系统',
+      '/sqlite': 'SQLite数据库管理',
+      '/chromadb': 'ChromaDB向量数据库管理'
     }
     
     const currentPageTitle = computed(() => {
