@@ -228,3 +228,75 @@ async def reindex_vectors(db: DatabaseDep):
             "success": False,
             "message": f"重建索引失败: {str(e)}"
         }
+
+
+@router.post("/server/restart")
+async def restart_server():
+    """重启服务器"""
+    try:
+        import os
+        import sys
+        import subprocess
+        import threading
+        import time
+        
+        def start_monitor():
+            """启动监控脚本"""
+            time.sleep(2)  # 等待2秒，确保响应返回
+            
+            # 获取当前进程ID
+            pid = os.getpid()
+            
+            # 构建路径
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            monitor_script = os.path.join(project_root, "server_monitor.py")
+            start_bat = os.path.join(project_root, "start.bat")
+            
+            # 启动监控脚本
+            if os.name == 'nt':
+                cmd = f'start /B "" {sys.executable} "{monitor_script}" --pid {pid} --mode restart --start-bat "{start_bat}"'
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                cmd = f'nohup {sys.executable} {monitor_script} --pid {pid} --mode restart --start-bat "{start_bat}" > /dev/null 2>&1 &'
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        threading.Thread(target=start_monitor, daemon=True).start()
+        return {"success": True, "message": "服务器重启请求已接受，正在重启..."}
+    except Exception as e:
+        return {"success": False, "message": f"重启服务器失败: {str(e)}"}
+
+
+@router.post("/server/shutdown")
+async def shutdown_server():
+    """关闭服务器"""
+    try:
+        import os
+        import sys
+        import subprocess
+        import threading
+        import time
+        
+        def start_monitor():
+            """启动监控脚本"""
+            time.sleep(2)  # 等待2秒，确保响应返回
+            
+            # 获取当前进程ID
+            pid = os.getpid()
+            
+            # 构建路径
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            monitor_script = os.path.join(project_root, "server_monitor.py")
+            
+            # 启动监控脚本
+            if os.name == 'nt':
+                cmd = f'start /B "" {sys.executable} "{monitor_script}" --pid {pid} --mode shutdown'
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                cmd = f'nohup {sys.executable} {monitor_script} --pid {pid} --mode shutdown > /dev/null 2>&1 &'
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        threading.Thread(target=start_monitor, daemon=True).start()
+        return {"success": True, "message": "服务器关闭请求已接受，正在关闭..."}
+    except Exception as e:
+        return {"success": False, "message": f"关闭服务器失败: {str(e)}"}
+    

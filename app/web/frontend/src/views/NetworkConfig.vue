@@ -119,8 +119,8 @@
 
 <script>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { configApi } from '@/api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { configApi, systemApi } from '@/api'
 
 export default {
   name: 'NetworkConfig',
@@ -211,13 +211,52 @@ export default {
         
         const response = await configApi.updateConfig(configData)
         if (response.needs_restart) {
-          ElMessage.warning(response.message)
+          // 显示重启提示对话框
+          try {
+            await ElMessageBox.confirm(
+              '配置更新成功，但需要重启服务器才能生效。\n\n请选择以下操作：',
+              '需要重启服务器',
+              {
+                confirmButtonText: '立即重启',
+                cancelButtonText: '放弃修改',
+                type: 'warning',
+                customClass: 'restart-dialog'
+              }
+            )
+            
+            // 用户选择立即重启
+            ElMessage.info('正在重启服务器...')
+            try {
+              // 调用后端重启服务器API
+              await systemApi.restartServer()
+              ElMessage.success('服务器重启请求已发送，请等待服务重新启动')
+              
+              // 3秒后刷新页面
+              setTimeout(() => {
+                window.location.reload()
+              }, 3000)
+            } catch (restartError) {
+              console.error('重启服务器失败:', restartError)
+              ElMessage.error('重启服务器失败: ' + restartError.message)
+              // 重新加载配置以确保前端显示最新值
+              await loadConfig()
+            }
+          } catch (error) {
+            // 用户选择放弃修改
+            if (error !== 'cancel') {
+              console.error('对话框操作失败:', error)
+              ElMessage.error('操作失败: ' + error.message)
+            } else {
+              // 放弃修改，重新加载原始配置
+              ElMessage.info('已放弃修改，恢复原始配置')
+              await loadConfig()
+            }
+          }
         } else {
           ElMessage.success(response.message)
+          // 重新加载配置以确保前端显示最新值
+          await loadConfig()
         }
-        
-        // 重新加载配置以确保前端显示最新值
-        await loadConfig()
       } catch (error) {
         console.error('保存API配置失败:', error)
         ElMessage.error('保存API配置失败: ' + error.message)

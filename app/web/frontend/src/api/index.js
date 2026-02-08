@@ -71,6 +71,16 @@ export const systemApi = {
     } else if (type === 'server') {
       return api.delete('/logs/server')
     }
+  },
+  
+  // 重启服务器
+  restartServer() {
+    return api.post('/server/restart')
+  },
+  
+  // 关闭服务器
+  shutdownServer() {
+    return api.post('/server/shutdown')
   }
 }
 

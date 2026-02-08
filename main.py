@@ -43,7 +43,23 @@ async def lifespan(app: FastAPI):
         logger.error(f"数据库初始化失败: {e}")
         raise
     
-    logger.info(f"语义检索系统启动完成，监听地址: http://{config.HOST}:{config.PORT}")
+    logger.info(f"语义检索系统启动完成，监听地址: http://localhost:{config.PORT}")
+    
+    # 自动打开默认浏览器访问控制面板
+    import webbrowser
+    import threading
+    
+    def open_browser():
+        """在新线程中打开浏览器，避免阻塞服务启动"""
+        try:
+            control_panel_url = f"http://localhost:{config.PORT}"
+            logger.info(f"正在打开控制面板: {control_panel_url}")
+            webbrowser.open(control_panel_url)
+        except Exception as e:
+            logger.warning(f"自动打开浏览器失败: {e}")
+    
+    # 在新线程中执行，避免阻塞服务
+    threading.Thread(target=open_browser, daemon=True).start()
     
     yield  # 应用运行期间
     

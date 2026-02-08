@@ -1,5 +1,23 @@
 <template>
   <div class="dashboard">
+    <!-- 服务器控制按钮 -->
+    <el-row :gutter="20" class="server-control" style="margin-bottom: 20px;">
+      <el-col :span="24">
+        <el-card>
+          <div class="control-buttons">
+            <el-button type="danger" @click="restartServer" :loading="restarting">
+              <el-icon><Refresh /></el-icon>
+              重启服务器
+            </el-button>
+            <el-button type="warning" @click="shutdownServer" :loading="shuttingDown">
+              <el-icon><Close /></el-icon>
+              关闭服务器
+            </el-button>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+    
     <!-- 系统状态概览 -->
     <el-row :gutter="20" class="overview-cards">
       <el-col :span="6">
@@ -145,7 +163,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { systemApi } from '@/api'
 
 export default {
@@ -155,6 +173,8 @@ export default {
     const systemInfo = ref({})
     const serviceStatus = ref({})
     const systemStatus = ref('未知')
+    const restarting = ref(false)
+    const shuttingDown = ref(false)
 
     const getServiceName = (serviceKey) => {
       const serviceNames = {
@@ -212,6 +232,83 @@ export default {
       }
     }
 
+    // 重启服务器
+    const restartServer = async () => {
+      try {
+        await ElMessageBox.confirm(
+          '确定要重启服务器吗？重启过程中服务将暂时不可用。',
+          '重启服务器',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+        
+        restarting.value = true
+        ElMessage.info('正在重启服务器...')
+        
+        // 调用重启服务器API
+        await systemApi.restartServer()
+        
+        ElMessage.success('服务器重启请求已发送，请等待服务重新启动')
+        
+        // 3秒后刷新页面
+        setTimeout(() => {
+          window.location.reload()
+        }, 3000)
+        
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error('重启服务器失败: ' + error.message)
+        }
+      } finally {
+        restarting.value = false
+      }
+    }
+
+    // 关闭服务器
+    const shutdownServer = async () => {
+      try {
+        await ElMessageBox.confirm(
+          '确定要关闭服务器吗？关闭后需要手动启动服务。',
+          '关闭服务器',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+        
+        shuttingDown.value = true
+        ElMessage.info('正在关闭服务器...')
+        
+        // 调用关闭服务器API
+        await systemApi.shutdownServer()
+        
+        ElMessage.success('服务器关闭请求已发送')
+        
+        // 显示关闭提示
+        ElMessageBox.alert(
+          '服务器已关闭，需要手动启动服务。',
+          '服务器已关闭',
+          {
+            confirmButtonText: '确定',
+            callback: () => {
+              // 可以跳转到其他页面或执行其他操作
+            }
+          }
+        )
+        
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error('关闭服务器失败: ' + error.message)
+        }
+      } finally {
+        shuttingDown.value = false
+      }
+    }
+
     onMounted(() => {
       loadData()
     })
@@ -221,10 +318,14 @@ export default {
       systemInfo,
       serviceStatus,
       systemStatus,
+      restarting,
+      shuttingDown,
       getServiceName,
       getStatusType,
       formatUptime,
-      reindexVectors
+      reindexVectors,
+      restartServer,
+      shutdownServer
     }
   }
 }
@@ -333,5 +434,19 @@ export default {
   font-size: 16px;
   font-weight: bold;
   color: #303133;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 15px;
+}
+
+.control-buttons .el-button {
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
+.server-control {
+  margin-bottom: 20px;
 }
 </style>
