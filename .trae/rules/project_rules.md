@@ -22,13 +22,13 @@
 
 2. API 配置信息
 ## Embedding API（Qwen3-Embedding-4B）
-- **Base URL**: `http://127.0.0.1:11434/v1`
-- **Model ID**: `qwen3-embedding-4b`
-- **API Key**: `ollama`
+- **Base URL**: `https://dashscope.aliyuncs.com/compatible-mode/v1`
+- **Model ID**: `text-embedding-v4`
+- **API Key**: `sk-a7558f9302974d1891906107f6033939`
 ## LLM API（Qwen2:7b）
-- **Base URL**: `http://127.0.0.1:11434/v1`
-- **Model ID**: `qwen2:7b`
-- **API Key**: `ollama`
+- **Base URL**: `https://dashscope.aliyuncs.com/compatible-mode/v1`
+- **Model ID**: `qwen-turbo`
+- **API Key**: `sk-a7558f9302974d1891906107f6033939`
 
 1.  所有涉及模型调用的接口严格按照OpenAI API规范实现
     

@@ -39,16 +39,16 @@ class RuntimeConfig:
             'APP_VERSION': ('app', 'version'),
             'APP_ENV': ('app', 'environment'),
             'LLM_PROVIDER': ('ai_services', 'llm', 'provider'),
-            'LLM_API_BASE_URL': ('services', 'llm_services', 'openai-compatible', 'api_base'),
-            'LLM_API_KEY': ('services', 'llm_services', 'openai-compatible', 'api_key'),
-            'LLM_MODEL': ('services', 'llm_services', 'openai-compatible', 'default_model'),
-            'LLM_TIMEOUT': ('services', 'llm_services', 'openai-compatible', 'timeout'),
+            'LLM_API_BASE_URL': ('ai_services', 'llm', 'base_url'),
+            'LLM_API_KEY': ('ai_services', 'llm', 'api_key'),
+            'LLM_MODEL': ('ai_services', 'llm', 'default_model'),
+            'LLM_TIMEOUT': ('ai_services', 'llm', 'timeout'),
             'LLM_MAX_RETRIES': ('ai_services', 'llm', 'max_retries'),
             'EMBEDDING_PROVIDER': ('ai_services', 'embedding', 'provider'),
-            'EMBEDDING_API_BASE_URL': ('services', 'embedding_services', 'openai-compatible', 'api_base'),
-            'EMBEDDING_API_KEY': ('services', 'embedding_services', 'openai-compatible', 'api_key'),
-            'EMBEDDING_MODEL': ('services', 'embedding_services', 'openai-compatible', 'default_model'),
-            'EMBEDDING_DIMENSIONS': ('services', 'embedding_services', 'openai-compatible', 'dimensions'),
+            'EMBEDDING_API_BASE_URL': ('ai_services', 'embedding', 'base_url'),
+            'EMBEDDING_API_KEY': ('ai_services', 'embedding', 'api_key'),
+            'EMBEDDING_MODEL': ('ai_services', 'embedding', 'default_model'),
+            'EMBEDDING_DIMENSIONS': ('ai_services', 'embedding', 'dimensions'),
             'EMBEDDING_TIMEOUT': ('ai_services', 'embedding', 'timeout'),
             'EMBEDDING_MAX_RETRIES': ('ai_services', 'embedding', 'max_retries'),
             'DEFAULT_TOP_K': ('retrieval', 'default_top_k'),
@@ -88,17 +88,17 @@ class RuntimeConfig:
                 'APP_VERSION': '1.0.0',
                 'APP_ENV': 'development',
                 'LLM_PROVIDER': 'openai_compatible',
-                'LLM_API_BASE_URL': 'http://localhost:8080/v1',
-                'LLM_API_KEY': '',
+                'LLM_API_BASE_URL': 'http://127.0.0.1:11434/v1',
+                'LLM_API_KEY': 'ollama',
                 'LLM_MODEL': 'qwen2:7b',
                 'LLM_TIMEOUT': 300,
                 'LLM_MAX_RETRIES': 3,
                 'EMBEDDING_PROVIDER': 'openai_compatible',
-                'EMBEDDING_API_BASE_URL': 'http://localhost:8080/v1',
-                'EMBEDDING_API_KEY': '',
-                'EMBEDDING_MODEL': 'Qwen3-Embedding-4B',
+                'EMBEDDING_API_BASE_URL': 'http://127.0.0.1:11434/v1',
+                'EMBEDDING_API_KEY': 'ollama',
+                'EMBEDDING_MODEL': 'qwen3-embedding-4b',
                 'EMBEDDING_DIMENSIONS': 1024,
-                'EMBEDDING_TIMEOUT': 30,
+                'EMBEDDING_TIMEOUT': 300,
                 'EMBEDDING_MAX_RETRIES': 3,
                 'DEFAULT_TOP_K': 5,
                 'SIMILARITY_THRESHOLD': 0.7,
@@ -168,37 +168,47 @@ class RuntimeConfig:
             current_app_config['debug'] = value
             set_config(current_app_config, 'app')
         elif name == 'LLM_API_BASE_URL':
-            current_services = get_config('services') or {}
-            if 'llm_services' not in current_services:
-                current_services['llm_services'] = {}
-            if 'openai-compatible' not in current_services['llm_services']:
-                current_services['llm_services']['openai-compatible'] = {}
-            current_services['llm_services']['openai-compatible']['api_base'] = value
-            set_config(current_services, 'services')
+            current_ai_services = get_config('ai_services') or {}
+            if 'llm' not in current_ai_services:
+                current_ai_services['llm'] = {}
+            current_ai_services['llm']['base_url'] = value
+            set_config(current_ai_services, 'ai_services')
         elif name == 'LLM_API_KEY':
-            current_services = get_config('services') or {}
-            if 'llm_services' not in current_services:
-                current_services['llm_services'] = {}
-            if 'openai-compatible' not in current_services['llm_services']:
-                current_services['llm_services']['openai-compatible'] = {}
-            current_services['llm_services']['openai-compatible']['api_key'] = value
-            set_config(current_services, 'services')
+            current_ai_services = get_config('ai_services') or {}
+            if 'llm' not in current_ai_services:
+                current_ai_services['llm'] = {}
+            current_ai_services['llm']['api_key'] = value
+            set_config(current_ai_services, 'ai_services')
         elif name == 'LLM_MODEL':
-            current_services = get_config('services') or {}
-            if 'llm_services' not in current_services:
-                current_services['llm_services'] = {}
-            if 'openai-compatible' not in current_services['llm_services']:
-                current_services['llm_services']['openai-compatible'] = {}
-            current_services['llm_services']['openai-compatible']['default_model'] = value
-            set_config(current_services, 'services')
+            current_ai_services = get_config('ai_services') or {}
+            if 'llm' not in current_ai_services:
+                current_ai_services['llm'] = {}
+            current_ai_services['llm']['default_model'] = value
+            set_config(current_ai_services, 'ai_services')
         elif name == 'EMBEDDING_MODEL':
-            current_services = get_config('services') or {}
-            if 'embedding_services' not in current_services:
-                current_services['embedding_services'] = {}
-            if 'openai-compatible' not in current_services['embedding_services']:
-                current_services['embedding_services']['openai-compatible'] = {}
-            current_services['embedding_services']['openai-compatible']['default_model'] = value
-            set_config(current_services, 'services')
+            current_ai_services = get_config('ai_services') or {}
+            if 'embedding' not in current_ai_services:
+                current_ai_services['embedding'] = {}
+            current_ai_services['embedding']['default_model'] = value
+            set_config(current_ai_services, 'ai_services')
+        elif name == 'EMBEDDING_API_BASE_URL':
+            current_ai_services = get_config('ai_services') or {}
+            if 'embedding' not in current_ai_services:
+                current_ai_services['embedding'] = {}
+            current_ai_services['embedding']['base_url'] = value
+            set_config(current_ai_services, 'ai_services')
+        elif name == 'EMBEDDING_API_KEY':
+            current_ai_services = get_config('ai_services') or {}
+            if 'embedding' not in current_ai_services:
+                current_ai_services['embedding'] = {}
+            current_ai_services['embedding']['api_key'] = value
+            set_config(current_ai_services, 'ai_services')
+        elif name == 'EMBEDDING_DIMENSIONS':
+            current_ai_services = get_config('ai_services') or {}
+            if 'embedding' not in current_ai_services:
+                current_ai_services['embedding'] = {}
+            current_ai_services['embedding']['dimensions'] = value
+            set_config(current_ai_services, 'ai_services')
         else:
             # 通用方式：设置到app部分
             current_app_config = get_config('app') or {}

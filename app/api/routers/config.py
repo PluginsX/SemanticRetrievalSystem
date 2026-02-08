@@ -49,13 +49,13 @@ def load_config_from_core():
             llm_base_url = config.LLM_API_BASE_URL
         except Exception as e:
             logger.warning(f"获取LLM_API_BASE_URL配置失败: {e}")
-            llm_base_url = "http://localhost:11434/v1"
+            llm_base_url = "http://127.0.0.1:11434/v1"
             
         try:
             llm_api_key = config.LLM_API_KEY
         except Exception as e:
             logger.warning(f"获取LLM_API_KEY配置失败: {e}")
-            llm_api_key = ""
+            llm_api_key = "ollama"
             
         try:
             llm_model = config.LLM_MODEL
@@ -67,31 +67,31 @@ def load_config_from_core():
             llm_timeout = config.LLM_TIMEOUT
         except Exception as e:
             logger.warning(f"获取LLM_TIMEOUT配置失败: {e}")
-            llm_timeout = 30
+            llm_timeout = 300
             
         try:
             embedding_provider = config.EMBEDDING_PROVIDER
         except Exception as e:
             logger.warning(f"获取EMBEDDING_PROVIDER配置失败: {e}")
-            embedding_provider = "local"
+            embedding_provider = "openai_compatible"
             
         try:
             embedding_base_url = config.EMBEDDING_API_BASE_URL
         except Exception as e:
             logger.warning(f"获取EMBEDDING_API_BASE_URL配置失败: {e}")
-            embedding_base_url = "http://localhost:8080/v1"
+            embedding_base_url = "http://127.0.0.1:11434/v1"
             
         try:
             embedding_api_key = config.EMBEDDING_API_KEY
         except Exception as e:
             logger.warning(f"获取EMBEDDING_API_KEY配置失败: {e}")
-            embedding_api_key = ""
+            embedding_api_key = "ollama"
             
         try:
             embedding_model = config.EMBEDDING_MODEL
         except Exception as e:
             logger.warning(f"获取EMBEDDING_MODEL配置失败: {e}")
-            embedding_model = "BAAI/bge-large-zh-v1.5"
+            embedding_model = "qwen3-embedding-4b"
             
         try:
             embedding_dimensions = config.EMBEDDING_DIMENSIONS
@@ -193,17 +193,15 @@ async def update_config(config_data: Dict[str, Any]):
         
         if "llm" in config_data:
             # 更新LLM服务配置
-            if "services" not in current_config:
-                current_config["services"] = {}
-            if "llm_services" not in current_config["services"]:
-                current_config["services"]["llm_services"] = {}
-            if "openai-compatible" not in current_config["services"]["llm_services"]:
-                current_config["services"]["llm_services"]["openai-compatible"] = {}
+            if "ai_services" not in current_config:
+                current_config["ai_services"] = {}
+            if "llm" not in current_config["ai_services"]:
+                current_config["ai_services"]["llm"] = {}
             
-            old_base_url = current_config["services"]["llm_services"]["openai-compatible"].get("api_base", "http://localhost:8080/v1")
-            old_api_key = current_config["services"]["llm_services"]["openai-compatible"].get("api_key", "")
-            old_model = current_config["services"]["llm_services"]["openai-compatible"].get("default_model", "qwen2:7b")
-            old_timeout = current_config["services"]["llm_services"]["openai-compatible"].get("timeout", 300)
+            old_base_url = current_config["ai_services"]["llm"].get("base_url", "http://127.0.0.1:11434/v1")
+            old_api_key = current_config["ai_services"]["llm"].get("api_key", "")
+            old_model = current_config["ai_services"]["llm"].get("default_model", "qwen2:7b")
+            old_timeout = current_config["ai_services"]["llm"].get("max_retries", 300)
             
             new_base_url = config_data["llm"].get("base_url", old_base_url)
             new_api_key = config_data["llm"].get("api_key", old_api_key)
@@ -213,27 +211,25 @@ async def update_config(config_data: Dict[str, Any]):
             if old_base_url != new_base_url or old_api_key != new_api_key or old_model != new_model or old_timeout != new_timeout:
                 changed_keys.append("llm")
             
-            current_config["services"]["llm_services"]["openai-compatible"].update({
-                "api_base": new_base_url,
+            current_config["ai_services"]["llm"].update({
+                "base_url": new_base_url,
                 "api_key": new_api_key,
                 "default_model": new_model,
-                "timeout": new_timeout
+                "max_retries": new_timeout
             })
         
         if "embedding" in config_data:
             # 更新Embedding服务配置
-            if "services" not in current_config:
-                current_config["services"] = {}
-            if "embedding_services" not in current_config["services"]:
-                current_config["services"]["embedding_services"] = {}
-            if "openai-compatible" not in current_config["services"]["embedding_services"]:
-                current_config["services"]["embedding_services"]["openai-compatible"] = {}
+            if "ai_services" not in current_config:
+                current_config["ai_services"] = {}
+            if "embedding" not in current_config["ai_services"]:
+                current_config["ai_services"]["embedding"] = {}
             
-            old_base_url = current_config["services"]["embedding_services"]["openai-compatible"].get("api_base", "http://localhost:8080/v1")
-            old_api_key = current_config["services"]["embedding_services"]["openai-compatible"].get("api_key", "")
-            old_model = current_config["services"]["embedding_services"]["openai-compatible"].get("default_model", "Qwen3-Embedding-4B")
-            old_dimensions = current_config["services"]["embedding_services"]["openai-compatible"].get("dimensions", 1024)
-            old_timeout = current_config["services"]["embedding_services"]["openai-compatible"].get("timeout", 300)
+            old_base_url = current_config["ai_services"]["embedding"].get("base_url", "http://127.0.0.1:11434/v1")
+            old_api_key = current_config["ai_services"]["embedding"].get("api_key", "")
+            old_model = current_config["ai_services"]["embedding"].get("default_model", "qwen3-embedding-4b")
+            old_dimensions = current_config["ai_services"]["embedding"].get("dimensions", 1024)
+            old_timeout = current_config["ai_services"]["embedding"].get("timeout", 300)
             
             new_base_url = config_data["embedding"].get("base_url", old_base_url)
             new_api_key = config_data["embedding"].get("api_key", old_api_key)
@@ -244,8 +240,8 @@ async def update_config(config_data: Dict[str, Any]):
             if old_base_url != new_base_url or old_api_key != new_api_key or old_model != new_model or old_dimensions != new_dimensions or old_timeout != new_timeout:
                 changed_keys.append("embedding")
             
-            current_config["services"]["embedding_services"]["openai-compatible"].update({
-                "api_base": new_base_url,
+            current_config["ai_services"]["embedding"].update({
+                "base_url": new_base_url,
                 "api_key": new_api_key,
                 "default_model": new_model,
                 "dimensions": new_dimensions,

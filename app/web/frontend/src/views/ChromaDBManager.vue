@@ -37,7 +37,7 @@
               <span class="info-item">记录数量: {{ collectionInfo.count }}</span>
               <span class="info-item">向量维度: {{ collectionInfo.dimension }}</span>
             </div>
-            <el-select v-model="selectedCollection" @change="handleCollectionChange" placeholder="选择集合" class="table-select">
+            <el-select v-model="selectedCollection" @change="handleCollectionChange" placeholder="选择集合" class="table-select" popper-append-to-body placement="bottom">
               <el-option
                 v-for="collection in collections"
                 :key="collection.name"
@@ -98,9 +98,10 @@
         <div class="document-list">
           <el-table :data="documents" style="width: 100%" v-loading="loading" stripe border>
             <el-table-column prop="id" label="ids" width="150" show-overflow-tooltip />
-            <el-table-column label="embeddings" width="200" show-overflow-tooltip>
+            <el-table-column label="embeddings" width="150" show-overflow-tooltip>
               <template #default="scope">
-                <span class="ellipsis">{{ scope.row.embedding ? `[${scope.row.embedding.length}维向量]` : '-' }}</span>
+                <el-tag v-if="scope.row.has_embedding" type="success" size="small">Defined</el-tag>
+                <el-tag v-else type="info" size="small">Undefined</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="documents" min-width="300" show-overflow-tooltip>
@@ -199,6 +200,21 @@
         </template>
       </el-dialog>
     </div>
+    
+    <!-- 加载等待对话框 -->
+    <el-dialog
+      v-model="showLoadingDialog"
+      title="处理中"
+      width="30%"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div style="text-align: center; padding: 20px 0;">
+        <el-icon class="is-loading" style="font-size: 32px; margin-bottom: 16px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><path fill="currentColor" d="M512 0a512 512 0 110 1024 512 512 0 010-1024zm0 128a384 384 0 100 768 384 384 0 000-768zM512 224a288 288 0 11-288 288 288 288 0 01288-288zm0 64a224 224 0 100 448 224 224 0 000-448z"></path></svg></el-icon>
+        <p>{{ loadingMessage }}</p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -237,6 +253,8 @@ export default {
       document: [{ required: true, message: '请输入文档内容', trigger: 'blur' }]
     })
     const formRef = ref(null)
+    const showLoadingDialog = ref(false)
+    const loadingMessage = ref('')
     
     const dbStatus = reactive({
       message: '数据库状态：未连接',
@@ -378,7 +396,8 @@ export default {
       editingDocument.value = doc
       formData.id = doc.id || ''
       formData.document = doc.document || ''
-      formData.embedding_json = doc.embedding ? JSON.stringify(doc.embedding) : ''
+      // 编辑时不显示embedding，因为后端不再返回完整向量数据
+      formData.embedding_json = ''
       formData.metadata_json = doc.metadata ? JSON.stringify(doc.metadata) : ''
       showEditDialog.value = true
     }
@@ -386,19 +405,21 @@ export default {
     // 保存文档
     const saveDocument = async () => {
       try {
-        // 验证ID是否为空
-        if (!formData.id) {
-          ElMessage.error('文档ID不能为空')
-          return
-        }
+        // 验证表单
+        if (!formRef.value) return
+        await formRef.value.validate()
         
         // 准备保存的数据
         const saveData = {
-          id: formData.id,
           document: formData.document
         }
         
-        // 处理embedding
+        // 只有在提供了ID时才添加到保存数据中
+        if (formData.id) {
+          saveData.id = formData.id
+        }
+        
+        // 处理embedding（可选）
         if (formData.embedding_json) {
           try {
             saveData.embedding = JSON.parse(formData.embedding_json)
@@ -408,7 +429,7 @@ export default {
           }
         }
         
-        // 处理metadata
+        // 处理metadata（可选）
         if (formData.metadata_json) {
           try {
             saveData.metadata = JSON.parse(formData.metadata_json)
@@ -420,7 +441,7 @@ export default {
         
         if (editingDocument.value) {
           // 如果ID发生变化，需要检测唯一性
-          if (formData.id !== editingDocument.value.id) {
+          if (formData.id && formData.id !== editingDocument.value.id) {
             // 检查新ID是否已存在
             const response = await chromadbApi.checkDocumentIdExists(formData.id)
             if (response.exists) {
@@ -431,27 +452,48 @@ export default {
             // 先删除旧文档
             await chromadbApi.deleteDocument(editingDocument.value.id)
             // 再创建新文档
-            await chromadbApi.createDocument(saveData)
+            loadingMessage.value = '正在生成向量并创建文档...'
+            showLoadingDialog.value = true
+            try {
+              await chromadbApi.createDocument(saveData)
+            } finally {
+              showLoadingDialog.value = false
+            }
           } else {
-            // 更新文档
-            await chromadbApi.updateDocument(editingDocument.value.id, saveData)
+            // 更新文档（使用原有ID）
+            loadingMessage.value = '正在生成向量并更新文档...'
+            showLoadingDialog.value = true
+            try {
+              await chromadbApi.updateDocument(editingDocument.value.id, saveData)
+            } finally {
+              showLoadingDialog.value = false
+            }
           }
           ElMessage.success('更新文档成功')
         } else {
-          // 检查新ID是否已存在
-          const response = await chromadbApi.checkDocumentIdExists(formData.id)
-          if (response.exists) {
-            ElMessage.error('文档ID已存在，请使用其他ID')
-            return
+          // 新增文档
+          // 如果提供了ID，检查是否已存在
+          if (formData.id) {
+            const response = await chromadbApi.checkDocumentIdExists(formData.id)
+            if (response.exists) {
+              ElMessage.error('文档ID已存在，请使用其他ID')
+              return
+            }
           }
           
-          // 新增文档
-          await chromadbApi.createDocument(saveData)
+          loadingMessage.value = '正在生成向量并创建文档...'
+          showLoadingDialog.value = true
+          try {
+            await chromadbApi.createDocument(saveData)
+          } finally {
+            showLoadingDialog.value = false
+          }
           ElMessage.success('新增文档成功')
         }
         showEditDialog.value = false
         await loadDocuments()
       } catch (error) {
+        showLoadingDialog.value = false
         ElMessage.error(`保存文档失败: ${error.message}`)
       }
     }
@@ -517,6 +559,8 @@ export default {
       formData,
       formRules,
       formRef,
+      showLoadingDialog,
+      loadingMessage,
       dbStatus,
       collectionInfo,
       collectionStatus,
@@ -582,11 +626,14 @@ export default {
   background-color: #f5f7fa;
   border-radius: 4px;
   border: 1px solid #dcdfe6;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .collection-info .info-item {
   font-size: 14px;
   color: #606266;
+  white-space: nowrap;
 }
 
 .collection-info .info-item strong {

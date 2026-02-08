@@ -137,8 +137,8 @@ export default {
     // LLM配置
     const llmConfig = reactive({
         service_type: 'openai-compatible',
-        base_url: 'http://localhost:8080/v1',
-        api_key: '',
+        base_url: 'http://127.0.0.1:11434/v1',
+        api_key: 'ollama',
         model: 'qwen2:7b',
         max_tokens: 300 // API超时时间（秒）
     })
@@ -146,9 +146,9 @@ export default {
     // Embedding配置
     const embeddingConfig = reactive({
       service_type: 'openai-compatible',
-      base_url: 'http://localhost:8080/v1',
-      api_key: '',
-      model: 'Qwen3-Embedding-4B',
+      base_url: 'http://127.0.0.1:11434/v1',
+      api_key: 'ollama',
+      model: 'qwen3-embedding-4b',
       dimensions: 1024,
       timeout: 300 // API超时时间（秒）
     })
@@ -368,8 +368,8 @@ export default {
         // 重置为默认值
         Object.assign(llmConfig, {
             service_type: 'openai-compatible',
-            base_url: 'http://localhost:8080/v1',
-            api_key: '',
+            base_url: 'http://127.0.0.1:11434/v1',
+            api_key: 'ollama',
             model: 'qwen2:7b',
             max_tokens: 300 // API超时时间（秒）
         })
@@ -379,9 +379,9 @@ export default {
       // 重置为默认值
       Object.assign(embeddingConfig, {
         service_type: 'openai-compatible',
-        base_url: 'http://localhost:8080/v1',
-        api_key: '',
-        model: 'Qwen3-Embedding-4B',
+        base_url: 'http://127.0.0.1:11434/v1',
+        api_key: 'ollama',
+        model: 'qwen3-embedding-4b',
         dimensions: 1024,
         timeout: 300 // API超时时间（秒）
       })

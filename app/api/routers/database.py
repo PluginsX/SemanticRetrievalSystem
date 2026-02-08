@@ -263,10 +263,11 @@ async def get_chromadb_documents(
         if not db["collection"]:
             raise HTTPException(status_code=400, detail="ChromaDB集合未初始化")
         
-        # 获取所有文档
-        result = db["collection"].get()
+        # 获取所有文档，包含embeddings（仅检查是否存在）
+        result = db["collection"].get(include=["embeddings", "documents", "metadatas"])
         
         if not result or "documents" not in result:
+            log(f"ChromaDB - 结果为空或缺少documents字段", LogType.DATABASE, "INFO")
             return {
                 "data": {
                     "records": [],
@@ -276,17 +277,30 @@ async def get_chromadb_documents(
                 }
             }
         
+        # 确保所有字段都是列表，避免NoneType错误
+        ids_list = result.get("ids", []) or []
+        documents_list = result.get("documents", []) or []
+        metadatas_list = result.get("metadatas", []) or []
+        embeddings_list = result.get("embeddings", []) or []
+        
+        log(f"ChromaDB - ids数量: {len(ids_list)}, documents数量: {len(documents_list)}, metadatas数量: {len(metadatas_list)}, embeddings数量: {len(embeddings_list)}", LogType.DATABASE, "INFO")
+        
         # 构建文档列表
         documents = []
+        
         for i, (doc_id, document, metadata) in enumerate(zip(
-            result.get("ids", []),
-            result.get("documents", []),
-            result.get("metadatas", [])
+            ids_list,
+            documents_list,
+            metadatas_list
         )):
+            # 只返回是否有向量的布尔值，不返回完整的向量数据
+            has_embedding = i < len(embeddings_list) and embeddings_list[i] is not None
+            
             documents.append({
                 "id": doc_id,
                 "document": document,
-                "metadata": metadata or {}
+                "metadata": metadata or {},
+                "has_embedding": has_embedding
             })
         
         # 分页
@@ -330,7 +344,6 @@ async def search_chromadb_documents(
         
         # 使用外部Embedding API生成查询向量
         from app.services.ai_clients import embedding_client
-        from app.core.logger_manager import log, LogType
         
         log("开始执行ChromaDB向量搜索", LogType.DATABASE, "INFO")
         
@@ -433,12 +446,33 @@ async def create_chromadb_document(
         if result and "ids" in result and doc_id in result["ids"]:
             raise HTTPException(status_code=400, detail="文档ID已存在")
         
-        # 添加文档
-        db["collection"].add(
-            ids=[doc_id],
-            documents=[document],
-            metadatas=[data.get("metadata", {})]
-        )
+        # 检查是否提供了embedding
+        embedding = data.get("embedding")
+        
+        # 如果没有提供embedding，使用外部Embedding API生成
+        if embedding is None:
+            from app.services.ai_clients import embedding_client
+            log(f"ChromaDB - 开始为文档生成向量，ID: {doc_id}", LogType.DATABASE, "INFO")
+            embedding = await embedding_client.embed(document)
+            log(f"ChromaDB - 生成向量成功，维度: {len(embedding)}", LogType.DATABASE, "INFO")
+        
+        # 添加文档，包含embedding
+        # ChromaDB的metadatas参数是可选的，如果metadata为空则不传递
+        metadata = data.get("metadata")
+        
+        add_params = {
+            "ids": [doc_id],
+            "documents": [document],
+            "embeddings": [embedding]
+        }
+        
+        # 只有在metadata非空时才添加metadatas参数
+        if metadata:
+            add_params["metadatas"] = [metadata]
+        
+        log(f"ChromaDB - 添加文档参数: ids={add_params['ids']}, documents长度={len(add_params['documents'][0]) if add_params['documents'] else 0}, embeddings维度={len(add_params['embeddings'][0]) if add_params['embeddings'] else 0}, metadatas={'metadatas' in add_params}", LogType.DATABASE, "INFO")
+        
+        db["collection"].add(**add_params)
         
         log(f"ChromaDB - 创建文档成功，ID: {doc_id}", LogType.DATABASE, "INFO")
         
@@ -470,12 +504,41 @@ async def update_chromadb_document(
         if not document:
             raise HTTPException(status_code=400, detail="文档内容不能为空")
         
-        # 更新文档
-        db["collection"].update(
-            ids=[document_id],
-            documents=[document],
-            metadatas=[data.get("metadata", {})]
-        )
+        # 检查是否提供了embedding
+        embedding = data.get("embedding")
+        
+        # 如果没有提供embedding，获取原有的embedding
+        if embedding is None:
+            log(f"ChromaDB - 获取原有embedding，ID: {document_id}", LogType.DATABASE, "INFO")
+            result = db["collection"].get(
+                ids=[document_id],
+                include=["embeddings"]
+            )
+            if result and "embeddings" in result and result["embeddings"]:
+                embedding = result["embeddings"][0]
+                log(f"ChromaDB - 获取原有embedding成功，维度: {len(embedding)}", LogType.DATABASE, "INFO")
+            else:
+                # 如果原有文档没有embedding，使用外部Embedding API生成
+                from app.services.ai_clients import embedding_client
+                log(f"ChromaDB - 原有文档无embedding，开始生成新向量，ID: {document_id}", LogType.DATABASE, "INFO")
+                embedding = await embedding_client.embed(document)
+                log(f"ChromaDB - 生成新向量成功，维度: {len(embedding)}", LogType.DATABASE, "INFO")
+        
+        # 更新文档，包含embedding
+        # ChromaDB的metadatas参数是可选的，如果metadata为空则不传递
+        metadata = data.get("metadata")
+        
+        update_params = {
+            "ids": [document_id],
+            "documents": [document],
+            "embeddings": [embedding]
+        }
+        
+        # 只有在metadata非空时才添加metadatas参数
+        if metadata:
+            update_params["metadatas"] = [metadata]
+        
+        db["collection"].update(**update_params)
         
         log(f"ChromaDB - 更新文档成功，ID: {document_id}", LogType.DATABASE, "INFO")
         
@@ -558,8 +621,8 @@ async def get_chromadb_info(
             "dimension": 1024  # 默认向量维度
         }
         
-        # 获取文档数量
-        result = db["collection"].get()
+        # 获取文档数量（不获取embeddings，避免输出大量向量数据）
+        result = db["collection"].get(include=["documents"])
         if result and "documents" in result:
             collection_info["count"] = len(result["documents"])
         
@@ -589,9 +652,9 @@ async def get_chromadb_collections(
         # 构建集合列表
         collection_list = []
         for collection in collections:
-            # 获取集合文档数量
+            # 获取集合文档数量（不获取embeddings，避免输出大量向量数据）
             try:
-                result = collection.get()
+                result = collection.get(include=["documents"])
                 count = len(result["documents"]) if result and "documents" in result else 0
             except:
                 count = 0
@@ -612,3 +675,49 @@ async def get_chromadb_collections(
     except Exception as e:
         log(f"ChromaDB - 获取集合列表失败: {e}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"获取集合列表失败: {str(e)}")
+
+
+@router.post("/chromadb/collections/recreate")
+async def recreate_chromadb_collection(
+    db: DatabaseDep
+):
+    """删除并重新创建ChromaDB集合"""
+    try:
+        if not db["chroma"]:
+            raise HTTPException(status_code=400, detail="ChromaDB客户端未初始化")
+        
+        # 删除现有集合
+        log("ChromaDB - 开始删除现有集合", LogType.DATABASE, "INFO")
+        try:
+            db["chroma"].delete_collection(name="artifact_embeddings")
+            log("ChromaDB - 删除集合成功", LogType.DATABASE, "INFO")
+        except Exception as e:
+            log(f"ChromaDB - 删除集合失败（可能不存在）: {e}", LogType.DATABASE, "WARNING")
+        
+        # 重新创建集合，使用预计算的向量
+        log("ChromaDB - 开始创建新集合", LogType.DATABASE, "INFO")
+        new_collection = db["chroma"].create_collection(
+            name="artifact_embeddings",
+            metadata={
+                "description": "语义检索系统资料向量存储",
+                "use_precomputed_embeddings": "true"
+            },
+            embedding_function=None
+        )
+        
+        # 更新数据库管理器中的集合引用
+        db["collection"] = new_collection
+        db_manager.collection = new_collection
+        
+        log("ChromaDB - 创建集合成功", LogType.DATABASE, "INFO")
+        
+        return {
+            "success": True,
+            "message": "集合重新创建成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"ChromaDB - 重新创建集合失败: {e}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"重新创建集合失败: {str(e)}")
