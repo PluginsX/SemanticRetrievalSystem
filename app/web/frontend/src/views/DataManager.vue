@@ -5,6 +5,10 @@
                 <div class="card-header">
                     <span>资料管理</span>
                     <div class="header-actions">
+                        <el-button type="info" @click="reindexVectors">
+                            <el-icon><Refresh /></el-icon>
+                            重建索引
+                        </el-button>
                         <el-button type="primary" @click="showCreateDialog = true">
                             <el-icon><Plus /></el-icon>
                             新建资料
@@ -166,7 +170,7 @@ width="600px"
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CategoryManagement from './CategoryManagement.vue'
-import { artifactApi } from '@/api'
+import { artifactApi, systemApi } from '@/api'
 
 export default {
     name: 'DataManager',
@@ -228,6 +232,15 @@ export default {
         const refreshData = () => {
             loadData()
             ElMessage.success('数据已刷新')
+        }
+        
+        const reindexVectors = async () => {
+            try {
+                await systemApi.reindexVectors()
+                ElMessage.success('向量索引重建请求已发送')
+            } catch (error) {
+                ElMessage.error('重建索引失败: ' + error.message)
+            }
         }
         
         const handleSizeChange = (val) => {
@@ -382,6 +395,7 @@ export default {
             showCategoryManagement,
             searchArtifacts,
             refreshData,
+            reindexVectors,
             handleSizeChange,
             handleCurrentChange,
             viewArtifact,

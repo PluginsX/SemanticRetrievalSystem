@@ -94,6 +94,78 @@ if config.WEB_SERVICE_ENABLED:
         allow_headers=["*"],
     )
 
+# API访问日志中间件
+@app.middleware("http")
+async def api_access_log_middleware(request, call_next):
+    """API访问日志中间件"""
+    import time
+    from app.core.database import db_manager
+    
+    # 记录请求开始时间
+    start_time = time.time()
+    
+    # 获取请求信息
+    endpoint = request.url.path
+    method = request.method
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    
+    # 跳过静态文件和健康检查的日志记录
+    if endpoint.startswith("/static/") or endpoint in ["/health", "/api"]:
+        response = await call_next(request)
+        return response
+    
+    try:
+        # 处理请求
+        response = await call_next(request)
+        
+        # 计算响应时间
+        response_time = time.time() - start_time
+        
+        # 异步记录访问日志到数据库，避免阻塞响应
+        try:
+            # 使用线程池执行数据库操作，避免阻塞事件循环
+            import asyncio
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: _log_api_access(
+                endpoint, method, client_ip, user_agent, 
+                response.status_code, response_time
+            ))
+        except Exception as db_error:
+            # 如果异步记录失败，不影响主响应流程
+            pass
+        
+        return response
+    except Exception as e:
+        # 记录异常
+        logger.error(f"API请求处理失败: {e}")
+        # 重新抛出异常
+        raise
+
+def _log_api_access(endpoint, method, client_ip, user_agent, response_status, response_time):
+    """在后台线程中记录API访问日志"""
+    from app.core.database import db_manager
+    import sqlite3
+    
+    try:
+        conn = db_manager.init_sqlite()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO api_access_logs (endpoint, method, client_ip, user_agent, 
+                                     response_status, response_time)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (endpoint, method, client_ip, user_agent, 
+             response_status, response_time)
+        )
+        conn.commit()
+    except sqlite3.Error as e:
+        # 记录数据库错误但不中断主线程
+        logger.error(f"记录API访问日志失败: {e}")
+    except Exception as e:
+        logger.error(f"记录API访问日志发生未知错误: {e}")
+
 # 存储CORS中间件配置以便后续更新
 cors_origins = config.ALLOWED_ORIGINS
 

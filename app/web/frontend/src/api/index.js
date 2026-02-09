@@ -81,6 +81,11 @@ export const systemApi = {
   // 关闭服务器
   shutdownServer() {
     return api.post('/server/shutdown')
+  },
+  
+  // 获取访问量统计
+  getAccessStats(days = 7) {
+    return api.get('/access-stats', { params: { days } })
   }
 }
 

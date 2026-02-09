@@ -170,12 +170,28 @@ class DatabaseManager:
             )
         """)
         
+        # API访问日志表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_access_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                endpoint TEXT NOT NULL,
+                method VARCHAR(10) NOT NULL,
+                client_ip TEXT,
+                user_agent TEXT,
+                response_status INTEGER,
+                response_time FLOAT,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+            )
+        """)
+        
 
         
         # 创建索引
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_category ON artifacts(category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_artifact_id ON chunks(artifact_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_access_logs_created_at ON api_access_logs(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_access_logs_endpoint ON api_access_logs(endpoint)")
         
         self.sqlite_conn.commit()
     

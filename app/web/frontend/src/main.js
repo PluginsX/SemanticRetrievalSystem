@@ -5,7 +5,6 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 import App from './App.vue'
-import Dashboard from './views/Dashboard.vue'
 import DataManager from './views/DataManager.vue'
 import MonitoringPanel from './views/MonitoringPanel.vue'
 import SearchInterface from './views/SearchInterface.vue'
@@ -16,8 +15,7 @@ import ChromaDBManager from './views/ChromaDBManager.vue'
 
 // 路由配置
 const routes = [
-  { path: '/', component: Dashboard },
-  { path: '/dashboard', component: Dashboard },
+  { path: '/', component: MonitoringPanel },
   { path: '/monitoring', component: MonitoringPanel },
   { path: '/search', component: SearchInterface },
   { path: '/data', component: DataManager },

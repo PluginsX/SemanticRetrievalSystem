@@ -12,10 +12,6 @@
           router
         >
           <el-menu-item index="/">
-            <el-icon><House /></el-icon>
-            <span>仪表板</span>
-          </el-menu-item>
-          <el-menu-item index="/monitoring">
             <el-icon><Monitor /></el-icon>
             <span>系统监控</span>
           </el-menu-item>
@@ -81,8 +77,7 @@ export default {
     const route = useRoute()
     
     const pageTitleMap = {
-      '/': '系统仪表板',
-      '/dashboard': '系统仪表板',
+      '/': '系统监控面板',
       '/monitoring': '系统监控面板',
       '/search': '检索测试界面',
       '/data': '资料管理界面',

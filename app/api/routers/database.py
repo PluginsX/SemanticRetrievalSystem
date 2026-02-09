@@ -131,7 +131,7 @@ async def create_sqlite_record(
     """创建SQLite记录"""
     try:
         # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history"]
+        valid_tables = ["artifacts", "chunks", "search_history", "api_access_logs"]
         if table_name not in valid_tables:
             raise HTTPException(status_code=400, detail="无效的表名")
         
@@ -189,7 +189,7 @@ async def update_sqlite_record(
     """更新SQLite记录"""
     try:
         # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history"]
+        valid_tables = ["artifacts", "chunks", "search_history", "api_access_logs"]
         if table_name not in valid_tables:
             raise HTTPException(status_code=400, detail="无效的表名")
         
@@ -248,7 +248,7 @@ async def delete_sqlite_record(
     """删除SQLite记录"""
     try:
         # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history"]
+        valid_tables = ["artifacts", "chunks", "search_history", "api_access_logs"]
         if table_name not in valid_tables:
             raise HTTPException(status_code=400, detail="无效的表名")
         

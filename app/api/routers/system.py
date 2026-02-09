@@ -299,4 +299,67 @@ async def shutdown_server():
         return {"success": True, "message": "服务器关闭请求已接受，正在关闭..."}
     except Exception as e:
         return {"success": False, "message": f"关闭服务器失败: {str(e)}"}
+
+
+@router.get("/access-stats")
+async def get_access_stats(days: int = 7, db: DatabaseDep = None):
+    """获取访问量统计数据"""
+    try:
+        cursor = db["sqlite"].cursor()
+        
+        # 计算开始日期
+        import datetime
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=days)
+        
+        # 按日期分组统计访问量
+        cursor.execute("""
+            SELECT 
+                DATE(created_at) as date, 
+                COUNT(*) as count
+            FROM 
+                api_access_logs
+            WHERE 
+                created_at >= ?
+            GROUP BY 
+                DATE(created_at)
+            ORDER BY 
+                date
+        """, (start_date.strftime('%Y-%m-%d'),))
+        
+        results = cursor.fetchall()
+        
+        # 构建日期到访问量的映射
+        stats_map = {row[0]: row[1] for row in results}
+        
+        # 生成完整的日期范围（优化：使用列表推导式一次性生成所有日期）
+        base_date = start_date.date()  # 转换为date类型以提高性能
+        all_dates = [(base_date + datetime.timedelta(days=i)).isoformat() for i in range(days)]
+        date_list = all_dates
+        count_list = [stats_map.get(date, 0) for date in all_dates]
+        
+        # 优化：在同一次遍历中计算总和，避免多次遍历
+        total = sum(count_list)
+        average = total / days if days > 0 else 0
+        
+        return {
+            "success": True,
+            "data": {
+                "dates": date_list,
+                "counts": count_list,
+                "total": total,
+                "average": average
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取访问量统计失败: {str(e)}",
+            "data": {
+                "dates": [],
+                "counts": [],
+                "total": 0,
+                "average": 0
+            }
+        }
     
