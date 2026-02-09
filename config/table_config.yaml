@@ -1,0 +1,22 @@
+tables:
+  api_access_logs:
+    order: DESC
+    read_only: true
+    sort_field: created_at
+  artifacts:
+    business_logic:
+    - vector_sync
+    default_fields:
+    - created_at
+    - updated_at
+    - is_active
+    order: DESC
+    sort_field: created_at
+  chunks:
+    order: ASC
+    read_only: false
+    sort_field: id
+  search_history:
+    order: DESC
+    read_only: false
+    sort_field: created_at

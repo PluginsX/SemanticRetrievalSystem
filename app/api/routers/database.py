@@ -6,6 +6,8 @@ from datetime import datetime
 from app.api.dependencies import DatabaseDep
 from app.core.database import db_manager
 from app.core.logger_manager import log, LogType
+from app.core.table_operations import TableOperationService
+from app.core.table_config import get_table_config, get_all_table_configs
 
 router = APIRouter(prefix="/api/v1", tags=["数据库管理"])
 
@@ -58,60 +60,33 @@ async def get_sqlite_table_data(
 ):
     """获取SQLite表数据"""
     try:
-        # 验证表名 - 只允许访问真实存在的用户表
-        cursor = db["sqlite"].cursor()
-        cursor.execute("""
-            SELECT name FROM sqlite_master 
-            WHERE type='table' 
-            AND name = ?
-            AND name NOT LIKE 'sqlite_%'
-        """, (table_name,))
+        # 初始化表操作服务
+        table_service = TableOperationService(db["sqlite"], get_all_table_configs())
         
-        if not cursor.fetchone():
-            raise HTTPException(status_code=400, detail="无效的表名")
+        # 获取表数据
+        result = table_service.get_table_data(table_name, page, size)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
         
         # 获取表结构
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        columns_info = cursor.fetchall()
-        
+        schema = table_service.get_table_schema(table_name)
         columns = []
-        for col in columns_info:
-            columns.append({
-                "prop": col[1],
-                "label": col[1],
-                "type": col[2]
-            })
-        
-        # 计算偏移量
-        offset = (page - 1) * size
-        
-        # 获取数据
-        if table_name == "artifacts":
-            cursor.execute(f"SELECT * FROM {table_name} ORDER BY created_at DESC LIMIT ? OFFSET ?", (size, offset))
-        else:
-            cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT ? OFFSET ?", (size, offset))
-        
-        rows = cursor.fetchall()
-        
-        # 转换为字典列表
-        records = []
-        for row in rows:
-            record = {}
-            for i, col in enumerate(columns):
-                record[col["prop"]] = row[i]
-            records.append(record)
-        
-        # 获取总数
-        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-        total = cursor.fetchone()[0]
+        if schema:
+            for field in schema:
+                columns.append({
+                    "prop": field['name'],
+                    "label": field['name'],
+                    "type": field['type']
+                })
         
         return {
             "data": {
-                "records": records,
+                "records": result['data'],
                 "columns": columns,
-                "total": total,
-                "page": page,
-                "size": size
+                "total": result['total'],
+                "page": result['page'],
+                "size": result['size']
             }
         }
         
@@ -130,16 +105,11 @@ async def create_sqlite_record(
 ):
     """创建SQLite记录"""
     try:
-        # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history", "api_access_logs"]
-        if table_name not in valid_tables:
-            raise HTTPException(status_code=400, detail="无效的表名")
-        
-        cursor = db["sqlite"].cursor()
+        # 初始化表操作服务
+        table_service = TableOperationService(db["sqlite"], get_all_table_configs())
         
         # 为资料表添加默认值
         if table_name == "artifacts":
-            # 为资料表添加默认值
             if "created_at" not in data:
                 data["created_at"] = datetime.now().isoformat()
             if "updated_at" not in data:
@@ -147,30 +117,15 @@ async def create_sqlite_record(
             if "is_active" not in data:
                 data["is_active"] = 1
         
-        # 构建插入语句
-        columns = list(data.keys())
-        placeholders = ["?"] * len(columns)
-        columns_str = ", ".join(columns)
-        placeholders_str = ", ".join(placeholders)
-        values = list(data.values())
+        # 创建记录
+        result = table_service.create_record(table_name, data)
         
-        cursor.execute(
-            f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders_str})",
-            values
-        )
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
         
-        db["sqlite"].commit()
+        log(f"SQLite - 创建记录成功，表: {table_name}, ID: {result['record_id']}", LogType.DATABASE, "INFO")
         
-        # 获取插入的ID
-        record_id = cursor.lastrowid
-        
-        log(f"SQLite - 创建记录成功，表: {table_name}, ID: {record_id}", LogType.DATABASE, "INFO")
-        
-        return {
-            "success": True,
-            "message": "创建记录成功",
-            "record_id": record_id
-        }
+        return result
         
     except HTTPException:
         raise
@@ -188,49 +143,31 @@ async def update_sqlite_record(
 ):
     """更新SQLite记录"""
     try:
-        # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history", "api_access_logs"]
-        if table_name not in valid_tables:
-            raise HTTPException(status_code=400, detail="无效的表名")
-        
-        cursor = db["sqlite"].cursor()
-        
-        # 构建更新语句
-        set_clauses = []
-        values = []
-        
-        for key, value in data.items():
-            if key != "id":  # 不允许更新ID
-                set_clauses.append(f"{key} = ?")
-                values.append(value)
-        
-        if not set_clauses:
-            raise HTTPException(status_code=400, detail="没有要更新的字段")
+        # 初始化表操作服务
+        table_service = TableOperationService(db["sqlite"], get_all_table_configs())
         
         # 为资料表更新updated_at
         if table_name == "artifacts":
-            set_clauses.append("updated_at = ?")
-            values.append(datetime.now().isoformat())
+            data["updated_at"] = datetime.now().isoformat()
         
-        values.append(record_id)
-        set_clauses_str = ", ".join(set_clauses)
+        # 移除ID字段（不允许更新）
+        if "id" in data:
+            del data["id"]
         
-        cursor.execute(
-            f"UPDATE {table_name} SET {set_clauses_str} WHERE id = ?",
-            values
-        )
+        if not data:
+            raise HTTPException(status_code=400, detail="没有要更新的字段")
         
-        db["sqlite"].commit()
+        # 更新记录
+        result = table_service.update_record(table_name, record_id, data)
         
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="记录不存在")
+        if not result['success']:
+            if "记录不存在" in result['message']:
+                raise HTTPException(status_code=404, detail=result['message'])
+            raise HTTPException(status_code=400, detail=result['message'])
         
         log(f"SQLite - 更新记录成功，表: {table_name}, ID: {record_id}", LogType.DATABASE, "INFO")
         
-        return {
-            "success": True,
-            "message": "更新记录成功"
-        }
+        return result
         
     except HTTPException:
         raise
@@ -247,27 +184,20 @@ async def delete_sqlite_record(
 ):
     """删除SQLite记录"""
     try:
-        # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history", "api_access_logs"]
-        if table_name not in valid_tables:
-            raise HTTPException(status_code=400, detail="无效的表名")
+        # 初始化表操作服务
+        table_service = TableOperationService(db["sqlite"], get_all_table_configs())
         
-        cursor = db["sqlite"].cursor()
+        # 删除记录
+        result = table_service.delete_record(table_name, record_id)
         
-        # 执行删除
-        cursor.execute(f"DELETE FROM {table_name} WHERE id = ?", (record_id,))
-        
-        db["sqlite"].commit()
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="记录不存在")
+        if not result['success']:
+            if "记录不存在" in result['message']:
+                raise HTTPException(status_code=404, detail=result['message'])
+            raise HTTPException(status_code=400, detail=result['message'])
         
         log(f"SQLite - 删除记录成功，表: {table_name}, ID: {record_id}", LogType.DATABASE, "INFO")
         
-        return {
-            "success": True,
-            "message": "删除记录成功"
-        }
+        return result
         
     except HTTPException:
         raise
@@ -293,6 +223,27 @@ async def init_sqlite_database():
     except Exception as e:
         log(f"SQLite - 数据库初始化失败: {e}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"数据库初始化失败: {str(e)}")
+
+
+@router.post("/sqlite/clear")
+async def clear_sqlite_database():
+    """清空SQLite数据库"""
+    try:
+        # 清空SQLite数据库
+        success = db_manager.clear_sqlite_database()
+        
+        if success:
+            log("SQLite - 数据库清空成功", LogType.DATABASE, "INFO")
+            return {
+                "success": True,
+                "message": "数据库清空成功"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="数据库清空失败")
+        
+    except Exception as e:
+        log(f"SQLite - 数据库清空失败: {e}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"数据库清空失败: {str(e)}")
 
 
 # ChromaDB数据库管理接口
@@ -710,6 +661,27 @@ async def init_chromadb_database():
     except Exception as e:
         log(f"ChromaDB - 数据库初始化失败: {e}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"数据库初始化失败: {str(e)}")
+
+
+@router.post("/chromadb/clear")
+async def clear_chromadb_database():
+    """清空ChromaDB数据库"""
+    try:
+        # 清空ChromaDB数据库
+        success = db_manager.clear_chromadb_database()
+        
+        if success:
+            log("ChromaDB - 数据库清空成功", LogType.DATABASE, "INFO")
+            return {
+                "success": True,
+                "message": "数据库清空成功"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="数据库清空失败")
+        
+    except Exception as e:
+        log(f"ChromaDB - 数据库清空失败: {e}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"数据库清空失败: {str(e)}")
 
 
 @router.get("/chromadb/info")

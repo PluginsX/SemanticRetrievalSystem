@@ -314,6 +314,82 @@ class DatabaseManager:
             log(f"获取向量数据失败: {str(e)}", LogType.SERVER, "ERROR")
             return []
     
+    def clear_sqlite_database(self):
+        """清空SQLite数据库中的所有数据"""
+        try:
+            if not self.sqlite_conn:
+                self.init_sqlite()
+            
+            cursor = self.sqlite_conn.cursor()
+            
+            # 获取所有用户表（排除SQLite系统表）
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' 
+                AND name NOT LIKE 'sqlite_%'
+                AND name NOT IN ('sqlite_sequence')
+            """)
+            
+            tables = [row[0] for row in cursor.fetchall()]
+            
+            # 开始事务
+            cursor.execute("BEGIN TRANSACTION")
+            
+            # 清空每个表
+            for table_name in tables:
+                cursor.execute(f"DELETE FROM {table_name}")
+                log(f"SQLite - 已清空表 {table_name}", LogType.DATABASE, "INFO")
+            
+            # 提交事务
+            self.sqlite_conn.commit()
+            
+            log("SQLite - 数据库清空完成", LogType.DATABASE, "INFO")
+            return True
+            
+        except Exception as e:
+            # 发生错误时回滚
+            self.sqlite_conn.rollback()
+            log(f"SQLite - 数据库清空失败: {e}", LogType.DATABASE, "ERROR")
+            raise e
+    
+    def clear_chromadb_database(self):
+        """清空ChromaDB数据库中的所有数据"""
+        try:
+            if not self.chroma_available:
+                log("ChromaDB不可用，无法清空数据库", LogType.DATABASE, "ERROR")
+                return False
+            
+            if not self.chroma_client:
+                self.init_chroma()
+            
+            if not self.collection:
+                log("ChromaDB集合未初始化", LogType.DATABASE, "ERROR")
+                return False
+            
+            # 获取集合中的记录数
+            count = self.collection.count()
+            
+            if count > 0:
+                # 获取所有文档ID
+                results = self.collection.get(include=['metadatas'])  # 只获取元数据以提高性能
+                ids = results.get('ids', [])
+                
+                if ids:
+                    # 删除所有文档
+                    self.collection.delete(ids=ids)
+                    log(f"ChromaDB - 已删除 {len(ids)} 个文档", LogType.DATABASE, "INFO")
+                else:
+                    log("ChromaDB - 未找到任何文档", LogType.DATABASE, "WARNING")
+            else:
+                log("ChromaDB - 集合中无数据", LogType.DATABASE, "INFO")
+            
+            log("ChromaDB - 数据库清空完成", LogType.DATABASE, "INFO")
+            return True
+            
+        except Exception as e:
+            log(f"ChromaDB - 数据库清空失败: {e}", LogType.DATABASE, "ERROR")
+            raise e
+
     def close_connections(self):
         """关闭所有数据库连接"""
         if self.sqlite_conn:

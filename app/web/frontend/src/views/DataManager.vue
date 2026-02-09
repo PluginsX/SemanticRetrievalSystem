@@ -4,6 +4,10 @@
             <template #header>
                 <div class="card-header">
                     <span>资料管理</span>
+                    <div class="status-message" v-if="asyncTaskStatus.show">
+                        <el-icon class="status-icon"><Loading /></el-icon>
+                        <span class="status-text" :title="asyncTaskStatus.message">{{ asyncTaskStatus.message }}</span>
+                    </div>
                     <div class="header-actions">
                         <el-button type="info" @click="reindexVectors">
                             <el-icon><Refresh /></el-icon>
@@ -12,6 +16,10 @@
                         <el-button type="primary" @click="showCreateDialog = true">
                             <el-icon><Plus /></el-icon>
                             新建资料
+                        </el-button>
+                        <el-button type="success" @click="showBatchImportDialog = true">
+                            <el-icon><Upload /></el-icon>
+                            批量新增
                         </el-button>
                         <el-button @click="refreshData">
                             <el-icon><Refresh /></el-icon>
@@ -163,12 +171,86 @@ width="600px"
   v-model="showCategoryManagement"
   @saved="onCategoriesSaved"
 />
+
+<!-- 批量导入对话框 -->
+<el-dialog
+  v-model="showBatchImportDialog"
+  title="批量新增资料"
+  width="800px"
+  @close="closeBatchImportDialog"
+>
+  <div class="batch-import-content">
+    <p>请将批量收集的资料按照以下JSON格式输入：</p>
+    <el-input
+      v-model="batchJsonData"
+      type="textarea"
+      :rows="15"
+      placeholder='示例格式：
+[
+  {
+    "title": "资料标题1",
+    "content": "资料内容1",
+    "category": "可选分类",
+    "tags": "可选标签",
+    "metadata": "可选元数据"
+  },
+  {
+    "title": "资料标题2",
+    "content": "资料内容2",
+    "category": "可选分类",
+    "tags": "可选标签",
+    "metadata": "可选元数据"
+  }
+]'
+    />
+    <div style="margin-top: 15px; color: #909399; font-size: 14px;">
+      <p>注意：<br>
+      1. 标题(title)和内容(content)字段为必填项<br>
+      2. 其他字段(category, tags, metadata等)为可选项<br>
+      3. 每条资料都将按照正常流程导入，包括生成Embedding数据</p>
+    </div>
+  </div>
+  <template #footer>
+    <span class="dialog-footer">
+      <el-button @click="closeBatchImportDialog">取消</el-button>
+      <el-button type="primary" @click="startBatchImport">开始导入</el-button>
+    </span>
+  </template>
+</el-dialog>
+
+<!-- 进度对话框 -->
+<el-dialog
+  v-model="showProgress"
+  title="批量导入进度"
+  width="500px"
+  :show-close="false"
+  :close-on-click-modal="false"
+  :close-on-press-escape="false"
+>
+  <div class="progress-content">
+    <p>{{ progressStatus }}</p>
+    <el-progress 
+      :percentage="progressPercentage" 
+      :status="progressPercentage === 100 ? 'success' : null"
+      :indeterminate="progressStatus.includes('processing')"
+      :duration="1"
+    />
+  </div>
+  <template #footer>
+    <span class="dialog-footer">
+      <el-button @click="cancelImport" :disabled="progressPercentage === 100">取消导入</el-button>
+      <el-button type="primary" @click="closeProgressDialog" v-if="progressPercentage === 100">确定</el-button>
+    </span>
+  </template>
+</el-dialog>
+
 </div>
 </template>
 
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Plus, Upload, Search, Loading } from '@element-plus/icons-vue'
 import CategoryManagement from './CategoryManagement.vue'
 import { artifactApi, systemApi } from '@/api'
 
@@ -184,6 +266,11 @@ export default {
         const total = ref(0)
         const showCreateDialog = ref(false)
         const editingArtifact = ref(null)
+        
+        const asyncTaskStatus = reactive({
+            show: false,
+            message: ''
+        })
         
         const formData = reactive({
             title: '',
@@ -236,10 +323,24 @@ export default {
         
         const reindexVectors = async () => {
             try {
+                asyncTaskStatus.show = true
+                asyncTaskStatus.message = '正在重建向量索引...'
                 await systemApi.reindexVectors()
                 ElMessage.success('向量索引重建请求已发送')
+                asyncTaskStatus.show = true
+                asyncTaskStatus.message = '向量索引重建请求已发送'
+                // 5秒后隐藏状态信息
+                setTimeout(() => {
+                    asyncTaskStatus.show = false
+                }, 5000)
             } catch (error) {
                 ElMessage.error('重建索引失败: ' + error.message)
+                asyncTaskStatus.show = true
+                asyncTaskStatus.message = '重建索引失败: ' + error.message
+                // 5秒后隐藏状态信息
+                setTimeout(() => {
+                    asyncTaskStatus.show = false
+                }, 5000)
             }
         }
         
@@ -373,6 +474,183 @@ export default {
         }
         
         // 分类管理对话框相关
+        // 批量导入相关
+        const showBatchImportDialog = ref(false)
+        const batchJsonData = ref('')
+        const showProgress = ref(false)
+        const progressPercentage = ref(0)
+        const progressStatus = ref('')
+        const taskId = ref('')
+        const importInterval = ref(null)
+        
+        // 显示批量导入对话框
+        const showBatchImport = () => {
+            showBatchImportDialog.value = true
+            batchJsonData.value = ''
+        }
+        
+        // 开始批量导入
+        const startBatchImport = async () => {
+            if (!batchJsonData.value.trim()) {
+                ElMessage.error('请输入JSON数据')
+                return
+            }
+            
+            try {
+                // 解析JSON数据以验证格式
+                JSON.parse(batchJsonData.value)
+            } catch (error) {
+                ElMessage.error('JSON格式错误: ' + error.message)
+                return
+            }
+            
+            try {
+                const response = await artifactApi.batchImport({ data: JSON.parse(batchJsonData.value) })
+                
+                if (response.success) {
+                    taskId.value = response.task_id
+                    showProgress.value = true
+                    progressPercentage.value = 0
+                    progressStatus.value = '开始导入...'
+                    
+                    // 开始轮询进度
+                    startProgressPolling()
+                } else {
+                    ElMessage.error(response.message || '批量导入启动失败')
+                }
+            } catch (error) {
+                ElMessage.error('批量导入启动失败: ' + error.message)
+            }
+        }
+        
+        // 开始轮询进度
+        const startProgressPolling = () => {
+            // 清除之前的轮询
+            if (importInterval.value) {
+                clearInterval(importInterval.value)
+            }
+            
+            // 显示异步任务状态
+            asyncTaskStatus.show = true
+            asyncTaskStatus.message = '正在批量导入资料...'
+            
+            // 每1秒查询一次进度
+            importInterval.value = setInterval(async () => {
+                try {
+                    const response = await artifactApi.getBatchImportStatus(taskId.value)
+                    
+                    if (response.success) {
+                        const status = response.data
+                        const processed = status.processed || 0
+                        const total = status.total || 0
+                        
+                        // 更新状态信息
+                        if (status.status === 'processing') {
+                            asyncTaskStatus.show = true
+                            asyncTaskStatus.message = `正在批量导入资料... (${processed}/${total})`
+                        } else if (status.status === 'completed') {
+                            asyncTaskStatus.show = true
+                            asyncTaskStatus.message = `批量导入完成！成功: ${status.success}, 失败: ${status.failed}`
+                        } else if (status.status === 'failed') {
+                            asyncTaskStatus.show = true
+                            asyncTaskStatus.message = `批量导入失败！失败: ${status.failed}`
+                        } else if (status.status === 'cancelled') {
+                            asyncTaskStatus.show = true
+                            asyncTaskStatus.message = '批量导入已取消'
+                        }
+                        
+                        if (total > 0) {
+                            progressPercentage.value = Math.round((processed / total) * 100)
+                        } else {
+                            progressPercentage.value = 0
+                        }
+                        
+                        progressStatus.value = `${status.status} - 已处理: ${processed}/${total}`
+                        
+                        // 如果任务完成，停止轮询
+                        if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled') {
+                            clearInterval(importInterval.value)
+                            importInterval.value = null
+                            
+                            if (status.status === 'completed') {
+                                ElMessage.success(`批量导入完成！成功: ${status.success}, 失败: ${status.failed}`)
+                                asyncTaskStatus.show = true
+                                asyncTaskStatus.message = `批量导入完成！成功: ${status.success}, 失败: ${status.failed}`
+                                // 5秒后隐藏状态信息
+                                setTimeout(() => {
+                                    asyncTaskStatus.show = false
+                                }, 5000)
+                            } else if (status.status === 'failed') {
+                                ElMessage.error('批量导入失败')
+                                asyncTaskStatus.show = true
+                                asyncTaskStatus.message = `批量导入失败！失败: ${status.failed}`
+                                // 5秒后隐藏状态信息
+                                setTimeout(() => {
+                                    asyncTaskStatus.show = false
+                                }, 5000)
+                            } else if (status.status === 'cancelled') {
+                                ElMessage.info('批量导入已取消')
+                                asyncTaskStatus.show = true
+                                asyncTaskStatus.message = '批量导入已取消'
+                                // 5秒后隐藏状态信息
+                                setTimeout(() => {
+                                    asyncTaskStatus.show = false
+                                }, 5000)
+                            }
+                            
+                            // 刷新数据
+                            loadData()
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取进度失败:', error)
+                    clearInterval(importInterval.value)
+                    importInterval.value = null
+                    ElMessage.error('获取导入进度失败')
+                }
+            }, 1000) // 每秒轮询一次
+        }
+        
+        // 取消导入
+        const cancelImport = async () => {
+            try {
+                const response = await artifactApi.cancelBatchImport(taskId.value)
+                
+                if (response.success) {
+                    ElMessage.info('正在取消导入...')
+                    // 停止轮询
+                    if (importInterval.value) {
+                        clearInterval(importInterval.value)
+                        importInterval.value = null
+                    }
+                } else {
+                    ElMessage.error(response.message || '取消导入失败')
+                }
+            } catch (error) {
+                ElMessage.error('取消导入失败: ' + error.message)
+            }
+        }
+        
+        // 关闭批量导入对话框
+        const closeBatchImportDialog = () => {
+            showBatchImportDialog.value = false
+            // 停止轮询
+            if (importInterval.value) {
+                clearInterval(importInterval.value)
+                importInterval.value = null
+            }
+        }
+        
+        // 关闭进度对话框
+        const closeProgressDialog = () => {
+            showProgress.value = false
+            // 停止轮询
+            if (importInterval.value) {
+                clearInterval(importInterval.value)
+                importInterval.value = null
+            }
+        }
+        
         const showCategoryManagement = ref(false)
         
         onMounted(() => {
@@ -393,6 +671,16 @@ export default {
             formRules,
             formRef,
             showCategoryManagement,
+            // 批量导入相关
+            showBatchImportDialog,
+            batchJsonData,
+            showProgress,
+            progressPercentage,
+            progressStatus,
+            taskId,
+            importInterval,
+            // 异步任务状态
+            asyncTaskStatus,
             searchArtifacts,
             refreshData,
             reindexVectors,
@@ -403,6 +691,12 @@ export default {
             deleteArtifact,
             saveArtifact,
             formatDate,
+            // 批量导入方法
+            showBatchImport,
+            startBatchImport,
+            cancelImport,
+            closeBatchImportDialog,
+            closeProgressDialog,
             onCategoriesSaved
         }
     }
@@ -418,6 +712,41 @@ export default {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.status-message {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 20px;
+    padding: 8px 16px;
+    background-color: #f0f9ff;
+    border: 1px solid #409eff;
+    border-radius: 4px;
+    color: #409eff;
+    font-size: 14px;
+}
+
+.status-icon {
+    margin-right: 8px;
+    animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.status-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 400px;
 }
 
 .header-actions {

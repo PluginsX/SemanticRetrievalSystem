@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime
 import time
+import json
 
 from app.models.schemas import ArtifactCreate, ArtifactResponse, ArtifactListResponse
 from app.api.dependencies import DatabaseDep
@@ -96,11 +97,23 @@ async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
         log(f"SQLite - 开始创建新资料，标题: {artifact.title[:50]}...", LogType.DATABASE, "INFO")
         cursor = db["sqlite"].cursor()
         
+        # 处理tags和metadata字段 - 需要转换为字符串存储
+        tags_str = ','.join(artifact.tags) if artifact.tags else None
+        metadata_str = json.dumps(artifact.metadata, ensure_ascii=False) if artifact.metadata else None
+        
         # 插入资料
         cursor.execute("""
-            INSERT INTO artifacts (title, content, category, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, 1, datetime('now', 'localtime'), datetime('now', 'localtime'))
-        """, (artifact.title, artifact.content, artifact.category))
+            INSERT INTO artifacts (title, content, category, tags, metadata, source_type, source_path, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now', 'localtime'), datetime('now', 'localtime'))
+        """, (
+            artifact.title, 
+            artifact.content, 
+            artifact.category,
+            tags_str,
+            metadata_str,
+            artifact.source_type,
+            artifact.source_path
+        ))
         
         db["sqlite"].commit()
         log(f"SQLite - 创建资料成功，获取插入ID", LogType.DATABASE, "INFO")
@@ -119,7 +132,7 @@ async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
         
         # 返回创建的资料
         cursor.execute("""
-            SELECT id, title, content, category, created_at, updated_at, is_active
+            SELECT id, title, content, category, tags, metadata, source_type, source_path, created_at, updated_at, is_active
             FROM artifacts
             WHERE rowid = ?
         """, (artifact_id,))
@@ -128,14 +141,38 @@ async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
         if row:
             # 确保ID是有效的，如果不是则使用备选ID
             artifact_id_result = row[0] if row[0] is not None else str(artifact_id)
+            
+            # 处理tags字段 - 从字符串转换为列表
+            tags_list = []
+            if row[4]:  # tags字段
+                if isinstance(row[4], str):
+                    tags_list = [tag.strip() for tag in row[4].split(',') if tag.strip()]
+                elif isinstance(row[4], list):
+                    tags_list = row[4]
+            
+            # 处理metadata字段 - 从字符串转换为字典
+            metadata_dict = {}
+            if row[5]:  # metadata字段
+                if isinstance(row[5], str):
+                    try:
+                        metadata_dict = json.loads(row[5])
+                    except:
+                        metadata_dict = {}
+                elif isinstance(row[5], dict):
+                    metadata_dict = row[5]
+            
             response = ArtifactResponse(
                 id=artifact_id_result,
                 title=row[1],
                 content=row[2],
                 category=row[3],
-                created_at=row[4],
-                updated_at=row[5],
-                is_active=bool(row[6]) if row[6] is not None else True
+                tags=tags_list,
+                metadata=metadata_dict,
+                source_type=row[6],
+                source_path=row[7],
+                created_at=row[8],
+                updated_at=row[9],
+                is_active=bool(row[10]) if row[10] is not None else True
             )
         else:
             # 如果获取不到，返回基本数据
@@ -330,3 +367,84 @@ async def delete_artifact(artifact_id: int, db: DatabaseDep):
         db["sqlite"].rollback()
         log(f"SQLite - 删除资料失败: {str(e)}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"删除资料失败: {str(e)}")
+
+
+@router.post("/artifacts/batch")
+async def batch_import_artifacts(json_data: dict):
+    """批量导入资料"""
+    try:
+        import uuid
+        from app.services.batch_import import batch_import_service
+        
+        # 生成任务ID
+        task_id = str(uuid.uuid4())
+        
+        # 提取数据 - 兼容两种格式：直接数组或 { data: [...] } 对象
+        if isinstance(json_data, list):
+            # 直接是数组格式
+            data_list = json_data
+        else:
+            # 对象格式，检查是否有 'data' 键
+            data_list = json_data.get('data', json_data if isinstance(json_data, list) else [])
+        
+        # 将数据转换为JSON字符串
+        import json
+        json_str = json.dumps(data_list, ensure_ascii=False)
+        
+        # 启动批量导入任务（异步）
+        import asyncio
+        asyncio.create_task(batch_import_service.import_artifacts_from_json(json_str, task_id))
+        
+        return {
+            "success": True,
+            "message": "批量导入任务已启动",
+            "task_id": task_id
+        }
+        
+    except Exception as e:
+        log(f"SQLite - 批量导入启动失败: {str(e)}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"批量导入启动失败: {str(e)}")
+
+
+@router.get("/artifacts/batch/status/{task_id}")
+async def get_batch_import_status(task_id: str):
+    """获取批量导入任务状态"""
+    try:
+        from app.services.batch_import import batch_import_service
+        
+        status = batch_import_service.get_task_status(task_id)
+        if status is None:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        return {
+            "success": True,
+            "data": status
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"SQLite - 获取批量导入状态失败: {str(e)}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"获取批量导入状态失败: {str(e)}")
+
+
+@router.post("/artifacts/batch/cancel/{task_id}")
+async def cancel_batch_import(task_id: str):
+    """取消批量导入任务"""
+    try:
+        from app.services.batch_import import batch_import_service
+        
+        success = batch_import_service.cancel_task(task_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        return {
+            "success": True,
+            "message": "任务已取消"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"SQLite - 取消批量导入任务失败: {str(e)}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"取消批量导入任务失败: {str(e)}")

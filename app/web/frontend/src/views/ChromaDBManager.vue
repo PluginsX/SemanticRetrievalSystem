@@ -16,6 +16,10 @@
               <el-icon><Refresh /></el-icon>
               初始化数据库
             </el-button>
+            <el-button type="danger" @click="clearDatabase">
+              <el-icon><Delete /></el-icon>
+              清空数据库
+            </el-button>
             <el-button @click="refreshData">
               <el-icon><Refresh /></el-icon>
               刷新
@@ -37,7 +41,7 @@
               <span class="info-item">记录数量: {{ collectionInfo.count }}</span>
               <span class="info-item">向量维度: {{ collectionInfo.dimension }}</span>
             </div>
-            <el-select v-model="selectedCollection" @change="handleCollectionChange" placeholder="选择集合" class="table-select" popper-append-to-body placement="bottom">
+            <el-select v-model="selectedCollection" @change="handleCollectionChange" placeholder="选择集合" class="table-select" placement="bottom-end">
               <el-option
                 v-for="collection in collections"
                 :key="collection.name"
@@ -358,6 +362,25 @@ export default {
       }
     }
     
+    // 清空数据库
+    const clearDatabase = async () => {
+      try {
+        await ElMessageBox.confirm('确定要清空ChromaDB吗？这将删除所有文档且无法恢复！', '危险操作', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        
+        const response = await chromadbApi.clearDatabase()
+        ElMessage.success('数据库清空成功')
+        await loadDocuments()
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error(`清空数据库失败: ${error.message}`)
+        }
+      }
+    }
+    
     // 搜索文档
     const searchDocuments = async () => {
       if (!searchQuery.value) {
@@ -600,6 +623,7 @@ export default {
       loadDocuments,
       loadCollections,
       initDatabase,
+      clearDatabase,
       searchDocuments,
       addDocument,
       editDocument,

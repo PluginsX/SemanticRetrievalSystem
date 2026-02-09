@@ -119,6 +119,16 @@ export const artifactApi = {
   // 批量导入
   batchImport(data) {
     return api.post('/artifacts/batch', data)
+  },
+  
+  // 获取批量导入状态
+  getBatchImportStatus(taskId) {
+    return api.get(`/artifacts/batch/status/${taskId}`)
+  },
+  
+  // 取消批量导入
+  cancelBatchImport(taskId) {
+    return api.post(`/artifacts/batch/cancel/${taskId}`)
   }
 }
 
@@ -188,6 +198,11 @@ export const sqliteApi = {
   // 初始化数据库
   initDatabase() {
     return api.post('/sqlite/init')
+  },
+  
+  // 清空数据库
+  clearDatabase() {
+    return api.post('/sqlite/clear')
   }
 }
 
@@ -231,6 +246,11 @@ export const chromadbApi = {
   // 初始化数据库
   initDatabase() {
     return api.post('/chromadb/init')
+  },
+  
+  // 清空数据库
+  clearDatabase() {
+    return api.post('/chromadb/clear')
   },
   
   // 获取集合信息

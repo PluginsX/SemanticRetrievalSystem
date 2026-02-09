@@ -16,6 +16,10 @@
               <el-icon><Refresh /></el-icon>
               初始化数据库
             </el-button>
+            <el-button type="danger" @click="clearDatabase">
+              <el-icon><Delete /></el-icon>
+              清空数据库
+            </el-button>
             <el-button @click="refreshData">
               <el-icon><Refresh /></el-icon>
               刷新
@@ -226,6 +230,28 @@ export default {
       }
     }
     
+    // 清空数据库
+    const clearDatabase = async () => {
+      try {
+        await ElMessageBox.confirm('确定要清空数据库吗？这将删除所有数据且无法恢复！', '危险操作', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        
+        const response = await sqliteApi.clearDatabase()
+        ElMessage.success('数据库清空成功')
+        dbStatus.message = '数据库状态：已清空'
+        dbStatus.type = 'success'
+        // 重新加载表列表
+        loadTables()
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error(`清空数据库失败: ${error.message}`)
+        }
+      }
+    }
+    
     // 新增记录
     const addRecord = () => {
       editingRecord.value = null
@@ -332,6 +358,7 @@ export default {
       loadTableData,
       loadTables,
       initDatabase,
+      clearDatabase,
       addRecord,
       editRecord,
       saveRecord,
