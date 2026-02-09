@@ -2,7 +2,7 @@
    
 1. 全部使用中文交流
 
-2. 所有的python命令运行前必须先激活项目专用环境 .\venv\Scripts\Activate.ps1
+2. 所有的python命令运行前必须先激活项目专用环境 E:\Project\Python\SemanticRetrievalSystem\venv\Scripts\python.exe
 
 3. 所有pip指令都用官方源安装依赖：-i https://pypi.org/simple --trusted-host pypi.org
 

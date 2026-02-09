@@ -98,10 +98,10 @@
         <div class="document-list">
           <el-table :data="documents" style="width: 100%" v-loading="loading" stripe border>
             <el-table-column prop="id" label="ids" width="150" show-overflow-tooltip />
-            <el-table-column label="embeddings" width="150" show-overflow-tooltip>
+            <el-table-column label="embeddings" width="120" show-overflow-tooltip>
               <template #default="scope">
-                <el-tag v-if="scope.row.has_embedding" type="success" size="small">Defined</el-tag>
-                <el-tag v-else type="info" size="small">Undefined</el-tag>
+                <el-tag v-if="scope.row.has_embedding" type="success" size="small">已定义</el-tag>
+                <el-tag v-else type="info" size="small">未定义</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="documents" min-width="300" show-overflow-tooltip>
@@ -250,7 +250,8 @@ export default {
       metadata_json: ''
     })
     const formRules = ref({ 
-      document: [{ required: true, message: '请输入文档内容', trigger: 'blur' }]
+      // 移除强制要求填写documents字段的限制
+      // 改为Embeddings和Documents至少填写一个
     })
     const formRef = ref(null)
     const showLoadingDialog = ref(false)
@@ -392,14 +393,36 @@ export default {
     }
     
     // 编辑文档
-    const editDocument = (doc) => {
-      editingDocument.value = doc
-      formData.id = doc.id || ''
-      formData.document = doc.document || ''
-      // 编辑时不显示embedding，因为后端不再返回完整向量数据
-      formData.embedding_json = ''
-      formData.metadata_json = doc.metadata ? JSON.stringify(doc.metadata) : ''
-      showEditDialog.value = true
+    const editDocument = async (doc) => {
+      try {
+        // 显示加载对话框
+        loadingMessage.value = '正在获取文档详细信息...'
+        showLoadingDialog.value = true
+        
+        // 获取单个文档的完整信息，包括向量数据
+        const response = await chromadbApi.getDocument(doc.id)
+        const fullDoc = response.data
+        
+        editingDocument.value = fullDoc
+        formData.id = fullDoc.id || ''
+        formData.document = fullDoc.document || ''
+        // 显示完整的向量数据
+        formData.embedding_json = fullDoc.embedding ? JSON.stringify(fullDoc.embedding) : ''
+        formData.metadata_json = fullDoc.metadata ? JSON.stringify(fullDoc.metadata) : ''
+        showEditDialog.value = true
+      } catch (error) {
+        console.error('获取文档详细信息失败:', error)
+        ElMessage.error(`获取文档详细信息失败: ${error.message}`)
+        // 即使获取失败，也打开编辑对话框，使用基本信息
+        editingDocument.value = doc
+        formData.id = doc.id || ''
+        formData.document = doc.document || ''
+        formData.embedding_json = ''
+        formData.metadata_json = doc.metadata ? JSON.stringify(doc.metadata) : ''
+        showEditDialog.value = true
+      } finally {
+        showLoadingDialog.value = false
+      }
     }
     
     // 保存文档
@@ -407,16 +430,24 @@ export default {
       try {
         // 验证表单
         if (!formRef.value) return
-        await formRef.value.validate()
+        
+        // 自定义验证：Embeddings和Documents至少填写一个
+        if (!formData.document && !formData.embedding_json) {
+          ElMessage.error('Embeddings和Documents至少填写一个')
+          return
+        }
         
         // 准备保存的数据
-        const saveData = {
-          document: formData.document
-        }
+        const saveData = {}
         
         // 只有在提供了ID时才添加到保存数据中
         if (formData.id) {
           saveData.id = formData.id
+        }
+        
+        // 处理document（可选）
+        if (formData.document) {
+          saveData.document = formData.document
         }
         
         // 处理embedding（可选）
@@ -452,7 +483,7 @@ export default {
             // 先删除旧文档
             await chromadbApi.deleteDocument(editingDocument.value.id)
             // 再创建新文档
-            loadingMessage.value = '正在生成向量并创建文档...'
+            loadingMessage.value = '正在处理文档...'
             showLoadingDialog.value = true
             try {
               await chromadbApi.createDocument(saveData)
@@ -461,7 +492,7 @@ export default {
             }
           } else {
             // 更新文档（使用原有ID）
-            loadingMessage.value = '正在生成向量并更新文档...'
+            loadingMessage.value = '正在处理文档...'
             showLoadingDialog.value = true
             try {
               await chromadbApi.updateDocument(editingDocument.value.id, saveData)
@@ -481,7 +512,7 @@ export default {
             }
           }
           
-          loadingMessage.value = '正在生成向量并创建文档...'
+          loadingMessage.value = '正在处理文档...'
           showLoadingDialog.value = true
           try {
             await chromadbApi.createDocument(saveData)

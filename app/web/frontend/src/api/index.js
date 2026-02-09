@@ -122,6 +122,11 @@ export const searchApi = {
   // 执行检索
   retrieve(data) {
     return api.post('/search/retrieve', data)
+  },
+  
+  // 获取搜索历史
+  getSearchHistory(limit = 10) {
+    return api.get('/search/history', { params: { limit } })
   }
 }
 
@@ -150,6 +155,11 @@ export const configApi = {
 
 // SQLite数据库API
 export const sqliteApi = {
+  // 获取所有表
+  getTables() {
+    return api.get('/sqlite/tables')
+  },
+  
   // 获取表数据
   getTableData(tableName, params = {}) {
     return api.get(`/sqlite/tables/${tableName}`, { params })
@@ -206,6 +216,11 @@ export const chromadbApi = {
   // 检查文档ID是否存在
   checkDocumentIdExists(documentId) {
     return api.get(`/chromadb/documents/${documentId}/exists`)
+  },
+  
+  // 获取单个文档的完整信息，包括向量数据
+  getDocument(documentId) {
+    return api.get(`/chromadb/documents/${documentId}`)
   },
   
   // 初始化数据库

@@ -285,6 +285,13 @@ export default {
             try {
                 await formRef.value.validate()
                 
+                // 显示加载状态
+                const loadingMessage = ElMessage({
+                    message: '正在处理资料...',
+                    type: 'info',
+                    duration: 2000 // 2秒后自动消失
+                })
+                
                 // 处理表单数据
                 const submitData = { ...formData }
                 
@@ -297,21 +304,26 @@ export default {
                         return
                     }
                 } else {
-                    submitData.metadata = {}
+                    submitData.metadata = null
                 }
                 delete submitData.metadata_json
                 
+                // 处理可选字段
+                if (!submitData.category) submitData.category = null
+                if (!submitData.source_type) submitData.source_type = null
+                if (!submitData.source_path) submitData.source_path = null
+                
                 // 处理tags
-                if (Array.isArray(submitData.tags)) {
-                    submitData.tags = submitData.tags.join(',')
+                if (!submitData.tags || submitData.tags.length === 0) {
+                    submitData.tags = null
                 }
                 
                 if (editingArtifact.value) {
                     await artifactApi.updateArtifact(editingArtifact.value.id, submitData)
-                    ElMessage.success('更新成功')
+                    ElMessage.success('更新成功，正在生成向量...')
                 } else {
                     await artifactApi.createArtifact(submitData)
-                    ElMessage.success('创建成功')
+                    ElMessage.success('创建成功，正在生成向量...')
                 }
                 
                 showCreateDialog.value = false

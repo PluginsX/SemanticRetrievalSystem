@@ -24,7 +24,7 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
         cursor = db["sqlite"].cursor()
         cursor.execute("""
             INSERT INTO search_history (query, created_at)
-            VALUES (?, datetime('now'))
+            VALUES (?, datetime('now', 'localtime'))
         """, (search_request.query,))
         db["sqlite"].commit()
         search_id = cursor.lastrowid
@@ -50,20 +50,38 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
                 log(f"生成查询向量成功，维度: {len(query_embedding)}", LogType.SERVER, "INFO")
                 log(f"配置文件中设置的向量维度: {config.EMBEDDING_DIMENSIONS}", LogType.SERVER, "INFO")
                 
-                # 执行向量搜索
+                # 执行向量搜索（不获取documents，从SQLite查询）
                 vector_results = collection.query(
                     query_embeddings=[query_embedding],
                     n_results=search_request.top_k,
-                    include=["documents", "distances", "metadatas"]
+                    include=["distances", "metadatas"]
                 )
                 
-                log(f"向量搜索执行成功，返回 {len(vector_results['documents'][0])} 个结果", LogType.SERVER, "INFO")
+                log(f"向量搜索执行成功，返回 {len(vector_results['metadatas'][0])} 个结果", LogType.SERVER, "INFO")
+                
+                # 获取匹配的artifact_id列表
+                artifact_ids = []
+                for metadata in vector_results['metadatas'][0]:
+                    artifact_id = metadata.get('artifact_id') if metadata else None
+                    if artifact_id:
+                        artifact_ids.append(int(artifact_id))
+                
+                # 批量查询SQLite获取完整的资料信息
+                sqlite_results = {}
+                if artifact_ids:
+                    placeholders = ','.join(['?' for _ in artifact_ids])
+                    cursor.execute(f"""
+                        SELECT id, title, content, category, created_at, updated_at, is_active
+                        FROM artifacts
+                        WHERE id IN ({placeholders}) AND is_active = 1
+                    """, artifact_ids)
+                    
+                    sqlite_results = {row[0]: row for row in cursor.fetchall()}
                 
                 # 处理向量搜索结果
-                log(f"开始处理向量搜索结果，总结果数: {len(vector_results['documents'][0])}", LogType.SERVER, "INFO")
+                log(f"开始处理向量搜索结果，总结果数: {len(vector_results['metadatas'][0])}", LogType.SERVER, "INFO")
                 
-                for i, (document, distance, metadata) in enumerate(zip(
-                    vector_results['documents'][0], 
+                for i, (distance, metadata) in enumerate(zip(
                     vector_results['distances'][0], 
                     vector_results['metadatas'][0]
                 )):
@@ -72,25 +90,28 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
                     
                     log(f"处理结果 {i+1}: distance={distance}, similarity={similarity}, threshold={search_request.threshold}", LogType.SERVER, "INFO")
                     log(f"结果 {i+1} 的metadata: {metadata}", LogType.SERVER, "INFO")
-                    log(f"结果 {i+1} 的document片段: {document[:100]}...", LogType.SERVER, "INFO")
                     
                     if similarity >= search_request.threshold:
                         # 从metadata中获取artifact_id
-                        artifact_id = metadata.get('artifact_id') if metadata else f'vector_{i}'
+                        artifact_id = int(metadata.get('artifact_id')) if metadata else None
                         
-                        # 构建搜索结果
-                        result = SearchResult(
-                            id=artifact_id,
-                            title=metadata.get('title', f'向量结果 {i+1}') if metadata else f'向量结果 {i+1}',
-                            content=document,
-                            category=metadata.get('category', '未知') if metadata else '未知',
-                            created_at=metadata.get('created_at', datetime.now().isoformat()) if metadata else datetime.now().isoformat(),
-                            updated_at=metadata.get('updated_at', datetime.now().isoformat()) if metadata else datetime.now().isoformat(),
-                            is_active=True,
-                            similarity=similarity
-                        )
-                        log(f"添加结果 {i+1} 到最终结果列表", LogType.SERVER, "INFO")
-                        final_results.append(result)
+                        # 从SQLite获取完整的资料信息
+                        if artifact_id and artifact_id in sqlite_results:
+                            row = sqlite_results[artifact_id]
+                            result = SearchResult(
+                                id=row[0],
+                                title=row[1],
+                                content=row[2],
+                                category=row[3],
+                                created_at=row[4],
+                                updated_at=row[5],
+                                is_active=row[6],
+                                similarity=similarity
+                            )
+                            log(f"添加结果 {i+1} 到最终结果列表", LogType.SERVER, "INFO")
+                            final_results.append(result)
+                        else:
+                            log(f"结果 {i+1} 在SQLite中未找到，跳过", LogType.SERVER, "WARNING")
                     else:
                         log(f"结果 {i+1} 相似度低于阈值，被过滤", LogType.SERVER, "INFO")
                 
@@ -201,7 +222,7 @@ async def retrieve_documents(search_request: SearchRequest, db: DatabaseDep):
         try:
             cursor.execute("""
                 INSERT INTO search_history (query, response_time, created_at)
-                VALUES (?, -1, datetime('now'))
+                VALUES (?, -1, datetime('now', 'localtime'))
             """, (search_request.query,))
             db["sqlite"].commit()
         except:

@@ -199,7 +199,7 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { searchApi } from '@/api'
 
@@ -212,11 +212,7 @@ export default {
     const responseTime = ref(0)
     const showFullContent = ref(false)
     const selectedResult = ref(null)
-    const searchHistory = ref([
-      { id: 1, query: '人工智能发展历史', created_at: new Date(Date.now() - 3600000) },
-      { id: 2, query: '机器学习算法', created_at: new Date(Date.now() - 7200000) },
-      { id: 3, query: '深度学习应用', created_at: new Date(Date.now() - 10800000) }
-    ])
+    const searchHistory = ref([])
     
     const searchConfig = reactive({
       query: '',
@@ -224,6 +220,21 @@ export default {
       threshold: 0.7,
       category_filter: []
     })
+    
+    // 加载搜索历史
+    const loadSearchHistory = async () => {
+      try {
+        const response = await searchApi.getSearchHistory(10)
+        // 转换历史数据格式
+        searchHistory.value = response.history.map((item, index) => ({
+          id: index + 1,
+          query: item.query,
+          created_at: item.created_at
+        }))
+      } catch (error) {
+        console.error('加载搜索历史失败:', error)
+      }
+    }
     
     const performSearch = async () => {
       if (!searchConfig.query.trim()) {
@@ -260,6 +271,9 @@ export default {
           ElMessage.success(`找到 ${searchResults.value.length} 条相关资料`)
         }
         
+        // 重新加载历史数据
+        await loadSearchHistory()
+        
       } catch (error) {
         responseTime.value = Date.now() - startTime
         ElMessage.error('检索失败: ' + error.message)
@@ -269,27 +283,19 @@ export default {
       }
     }
     
+    onMounted(async () => {
+      // 组件挂载时加载搜索历史
+      await loadSearchHistory()
+    })
+    
     const loadHistory = (history) => {
       searchConfig.query = history.query
       performSearch()
     }
     
-    const addToHistory = (query) => {
-      const existingIndex = searchHistory.value.findIndex(item => item.query === query)
-      if (existingIndex > -1) {
-        searchHistory.value.splice(existingIndex, 1)
-      }
-      
-      searchHistory.value.unshift({
-        id: Date.now(),
-        query: query,
-        created_at: new Date()
-      })
-      
-      // 保留最近10条记录
-      if (searchHistory.value.length > 10) {
-        searchHistory.value = searchHistory.value.slice(0, 10)
-      }
+    const addToHistory = async (query) => {
+      // 重新加载历史数据，以保持与数据库同步
+      await loadSearchHistory()
     }
     
     const viewFullContent = (result) => {
@@ -486,6 +492,9 @@ export default {
   margin-top: 30px;
   padding-top: 20px;
   border-top: 1px solid #ebeef5;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .search-history h4 {
@@ -495,8 +504,9 @@ export default {
 }
 
 .history-list {
-  max-height: 200px;
+  flex: 1;
   overflow-y: auto;
+  max-height: none;
 }
 
 .history-item {

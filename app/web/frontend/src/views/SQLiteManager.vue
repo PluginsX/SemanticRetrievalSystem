@@ -35,10 +35,8 @@
           
           <!-- 表选择器 -->
           <div class="toolbar-right">
-            <el-select v-model="selectedTable" placeholder="选择表" @change="loadTableData" class="table-select">
-              <el-option label="artifacts (资料表)" value="artifacts" />
-              <el-option label="chunks (切片表)" value="chunks" />
-              <el-option label="search_history (检索历史表)" value="search_history" />
+            <el-select v-model="selectedTable" placeholder="选择表" @change="loadTableData" class="table-select" :loading="loadingTables">
+              <el-option v-for="table in tableList" :key="table.name" :label="`${table.name} (${table.count} 条记录)`" :value="table.name" />
             </el-select>
           </div>
         </div>
@@ -122,6 +120,8 @@ export default {
   },
   setup() {
     const selectedTable = ref('')
+    const tableList = ref([])
+    const loadingTables = ref(false)
     const tableData = ref([])
     const tableColumns = ref([])
     const editableColumns = ref([])
@@ -142,13 +142,31 @@ export default {
     
     // 表标题
     const tableTitle = computed(() => {
-      const tableNames = {
-        'artifacts': '资料表 (artifacts)',
-        'chunks': '切片表 (chunks)',
-        'search_history': '检索历史表 (search_history)'
-      }
-      return tableNames[selectedTable.value] || '数据表'
+      return selectedTable.value ? `${selectedTable.value} 表` : '数据表'
     })
+    
+    // 加载表列表
+    const loadTables = async () => {
+      loadingTables.value = true
+      try {
+        const response = await sqliteApi.getTables()
+        
+        if (response && response.data && response.data.tables) {
+          tableList.value = response.data.tables
+          
+          // 如果有表，默认选择第一个
+          if (tableList.value.length > 0 && !selectedTable.value) {
+            selectedTable.value = tableList.value[0].name
+            loadTableData()
+          }
+        }
+      } catch (error) {
+        console.error('加载表列表失败:', error)
+        ElMessage.error(`加载表列表失败: ${error.message}`)
+      } finally {
+        loadingTables.value = false
+      }
+    }
     
     // 加载表数据
     const loadTableData = async () => {
@@ -265,7 +283,7 @@ export default {
     
     // 刷新数据
     const refreshData = () => {
-      loadTableData()
+      loadTables()
     }
     
     // 获取输入类型
@@ -289,13 +307,14 @@ export default {
     }
     
     onMounted(() => {
-      // 初始加载第一个表
-      selectedTable.value = 'artifacts'
-      loadTableData()
+      // 初始加载表列表
+      loadTables()
     })
     
     return {
       selectedTable,
+      tableList,
+      loadingTables,
       tableData,
       tableColumns,
       editableColumns,
@@ -311,6 +330,7 @@ export default {
       dbStatus,
       tableTitle,
       loadTableData,
+      loadTables,
       initDatabase,
       addRecord,
       editRecord,

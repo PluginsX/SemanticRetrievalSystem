@@ -55,16 +55,13 @@ class VectorSyncService:
                 log(f"ChromaDB - 生成向量失败，跳过向量同步: {str(embed_error)}", LogType.DATABASE, "ERROR")
                 return False
             
-            # 将向量数据添加到Chroma数据库
-            # 使用资料ID作为唯一标识符
+            # 将向量数据添加到Chroma数据库（不存储documents，只存储向量数据和必要的metadata）
             try:
                 self.db_manager.collection.upsert(
                     ids=[str(artifact_id)],
                     embeddings=[embedding_vector],
-                    documents=[text_to_embed],
                     metadatas=[{
                         "artifact_id": str(artifact_id),
-                        "title": title,
                         "category": category or "",
                         "source_type": "artifact"
                     }]
@@ -130,7 +127,6 @@ class VectorSyncService:
             
             # 准备数据
             ids = []
-            documents = []
             metadatas = []
             embeddings = []
             
@@ -148,10 +144,8 @@ class VectorSyncService:
                     continue
                 
                 ids.append(str(artifact_id))
-                documents.append(text_to_embed)
                 metadatas.append({
                     "artifact_id": str(artifact_id),
-                    "title": title,
                     "category": category or "",
                     "source_type": "artifact"
                 })
@@ -161,13 +155,12 @@ class VectorSyncService:
                 return True
             
             # 批量生成向量
-            embeddings = await self.embedding_client.embed_batch(documents)
+            embeddings = await self.embedding_client.embed_batch([f"{artifact['title']}\n\n{artifact['content']}" for artifact in artifacts if artifact.get('title') and artifact.get('content')])
             
-            # 批量添加到向量数据库
+            # 批量添加到向量数据库（不存储documents）
             self.db_manager.collection.upsert(
                 ids=ids,
                 embeddings=embeddings,
-                documents=documents,
                 metadatas=metadatas
             )
             

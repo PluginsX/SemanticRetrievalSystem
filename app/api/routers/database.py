@@ -11,6 +11,44 @@ router = APIRouter(prefix="/api/v1", tags=["数据库管理"])
 
 
 # SQLite数据库管理接口
+@router.get("/sqlite/tables")
+async def get_sqlite_tables(
+    db: DatabaseDep
+):
+    """获取SQLite所有用户表"""
+    try:
+        cursor = db["sqlite"].cursor()
+        
+        # 获取所有表，过滤掉SQLite默认自带的表
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' 
+            AND name NOT LIKE 'sqlite_%' 
+            ORDER BY name
+        """)
+        
+        tables = []
+        for row in cursor.fetchall():
+            table_name = row[0]
+            # 获取表的记录数
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            count = cursor.fetchone()[0]
+            tables.append({
+                "name": table_name,
+                "count": count
+            })
+        
+        return {
+            "data": {
+                "tables": tables
+            }
+        }
+        
+    except Exception as e:
+        log(f"SQLite - 获取表列表失败: {e}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
+
+
 @router.get("/sqlite/tables/{table_name}")
 async def get_sqlite_table_data(
     table_name: str,
@@ -20,13 +58,19 @@ async def get_sqlite_table_data(
 ):
     """获取SQLite表数据"""
     try:
-        # 验证表名
-        valid_tables = ["artifacts", "chunks", "search_history"]
-        if table_name not in valid_tables:
+        # 验证表名 - 只允许访问真实存在的用户表
+        cursor = db["sqlite"].cursor()
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' 
+            AND name = ?
+            AND name NOT LIKE 'sqlite_%'
+        """, (table_name,))
+        
+        if not cursor.fetchone():
             raise HTTPException(status_code=400, detail="无效的表名")
         
         # 获取表结构
-        cursor = db["sqlite"].cursor()
         cursor.execute(f"PRAGMA table_info({table_name})")
         columns_info = cursor.fetchall()
         
@@ -93,10 +137,7 @@ async def create_sqlite_record(
         
         cursor = db["sqlite"].cursor()
         
-        # 构建插入语句
-        columns = list(data.keys())
-        placeholders = ["?"] * len(columns)
-        
+        # 为资料表添加默认值
         if table_name == "artifacts":
             # 为资料表添加默认值
             if "created_at" not in data:
@@ -106,6 +147,9 @@ async def create_sqlite_record(
             if "is_active" not in data:
                 data["is_active"] = 1
         
+        # 构建插入语句
+        columns = list(data.keys())
+        placeholders = ["?"] * len(columns)
         columns_str = ", ".join(columns)
         placeholders_str = ", ".join(placeholders)
         values = list(data.values())
@@ -263,11 +307,11 @@ async def get_chromadb_documents(
         if not db["collection"]:
             raise HTTPException(status_code=400, detail="ChromaDB集合未初始化")
         
-        # 获取所有文档，包含embeddings（仅检查是否存在）
+        # 获取所有文档，包括documents字段
         result = db["collection"].get(include=["embeddings", "documents", "metadatas"])
         
-        if not result or "documents" not in result:
-            log(f"ChromaDB - 结果为空或缺少documents字段", LogType.DATABASE, "INFO")
+        if not result or "ids" not in result:
+            log(f"ChromaDB - 结果为空或缺少ids字段", LogType.DATABASE, "INFO")
             return {
                 "data": {
                     "records": [],
@@ -285,20 +329,17 @@ async def get_chromadb_documents(
         
         log(f"ChromaDB - ids数量: {len(ids_list)}, documents数量: {len(documents_list)}, metadatas数量: {len(metadatas_list)}, embeddings数量: {len(embeddings_list)}", LogType.DATABASE, "INFO")
         
-        # 构建文档列表
+        # 构建文档列表（只使用ChromaDB中的数据，不依赖SQLite）
         documents = []
         
-        for i, (doc_id, document, metadata) in enumerate(zip(
-            ids_list,
-            documents_list,
-            metadatas_list
-        )):
+        for i, (doc_id, document, metadata) in enumerate(zip(ids_list, documents_list, metadatas_list)):
             # 只返回是否有向量的布尔值，不返回完整的向量数据
             has_embedding = i < len(embeddings_list) and embeddings_list[i] is not None
             
+            # 直接使用ChromaDB中的数据，包括documents字段
             documents.append({
                 "id": doc_id,
-                "document": document,
+                "document": document or "",
                 "metadata": metadata or {},
                 "has_embedding": has_embedding
             })
@@ -323,6 +364,46 @@ async def get_chromadb_documents(
     except Exception as e:
         log(f"ChromaDB - 获取文档列表失败: {e}", LogType.DATABASE, "ERROR")
         raise HTTPException(status_code=500, detail=f"获取文档列表失败: {str(e)}")
+
+
+@router.get("/chromadb/documents/{document_id}")
+async def get_chromadb_document(
+    document_id: str,
+    db: DatabaseDep
+):
+    """获取单个ChromaDB文档的完整信息，包括向量数据"""
+    try:
+        if not db["collection"]:
+            raise HTTPException(status_code=400, detail="ChromaDB集合未初始化")
+        
+        # 获取单个文档，包括完整的向量数据
+        result = db["collection"].get(
+            ids=[document_id],
+            include=["embeddings", "documents", "metadatas"]
+        )
+        
+        if not result or not result.get("ids"):
+            raise HTTPException(status_code=404, detail="文档不存在")
+        
+        # 构建返回数据
+        doc = {
+            "id": result["ids"][0],
+            "document": result.get("documents", [""])[0] or "",
+            "embedding": result.get("embeddings", [None])[0],
+            "metadata": result.get("metadatas", [{}])[0] or {}
+        }
+        
+        log(f"ChromaDB - 获取文档成功，ID: {document_id}", LogType.DATABASE, "INFO")
+        
+        return {
+            "data": doc
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"ChromaDB - 获取文档失败: {e}", LogType.DATABASE, "ERROR")
+        raise HTTPException(status_code=500, detail=f"获取文档失败: {str(e)}")
 
 
 @router.post("/chromadb/documents/search")
@@ -351,18 +432,36 @@ async def search_chromadb_documents(
         query_embedding = await embedding_client.embed(query)
         log(f"生成查询向量成功，维度: {len(query_embedding)}", LogType.DATABASE, "INFO")
         
-        # 执行向量搜索
+        # 执行向量搜索（不获取documents，从SQLite查询）
         result = db["collection"].query(
             query_embeddings=[query_embedding],
             n_results=top_k,
-            include=["documents", "distances", "metadatas"]
+            include=["distances", "metadatas"]
         )
+        
+        # 获取匹配的artifact_id列表
+        artifact_ids = []
+        for metadata in result.get("metadatas", [[]])[0]:
+            artifact_id = metadata.get('artifact_id') if metadata else None
+            if artifact_id:
+                artifact_ids.append(int(artifact_id))
+        
+        # 批量查询SQLite获取完整的资料信息
+        cursor = db["sqlite"].cursor()
+        sqlite_results = {}
+        if artifact_ids:
+            placeholders = ','.join(['?' for _ in artifact_ids])
+            cursor.execute(f"""
+                SELECT id, title, content, category, created_at, updated_at, is_active
+                FROM artifacts
+                WHERE id IN ({placeholders}) AND is_active = 1
+            """, artifact_ids)
+            sqlite_results = {row[0]: row for row in cursor.fetchall()}
         
         # 构建搜索结果
         documents = []
-        for i, (doc_id, document, metadata, distance) in enumerate(zip(
+        for i, (doc_id, metadata, distance) in enumerate(zip(
             result.get("ids", [[]])[0],
-            result.get("documents", [[]])[0],
             result.get("metadatas", [[]])[0],
             result.get("distances", [[]])[0]
         )):
@@ -371,13 +470,26 @@ async def search_chromadb_documents(
             
             # 只添加相似度大于等于阈值的结果
             if similarity >= threshold:
-                documents.append({
-                    "id": doc_id,
-                    "document": document,
-                    "metadata": metadata or {},
-                    "similarity": similarity,
-                    "distance": distance
-                })
+                # 从SQLite获取完整的资料信息
+                sqlite_row = sqlite_results.get(int(doc_id)) if doc_id.isdigit() else None
+                
+                if sqlite_row:
+                    documents.append({
+                        "id": doc_id,
+                        "document": f"{sqlite_row[1]}\n\n{sqlite_row[2]}",  # 从SQLite组合title和content
+                        "metadata": metadata or {},
+                        "similarity": similarity,
+                        "distance": distance
+                    })
+                else:
+                    # 如果SQLite中没有对应记录，只返回基本信息
+                    documents.append({
+                        "id": doc_id,
+                        "document": "",
+                        "metadata": metadata or {},
+                        "similarity": similarity,
+                        "distance": distance
+                    })
         
         return {
             "data": {
@@ -435,42 +547,47 @@ async def create_chromadb_document(
             raise HTTPException(status_code=400, detail="ChromaDB集合未初始化")
         
         document = data.get("document")
-        if not document:
-            raise HTTPException(status_code=400, detail="文档内容不能为空")
         
         # 使用前端传递的ID或生成新ID
         doc_id = data.get("id", f"doc_{int(datetime.now().timestamp() * 1000)}")
         
         # 检查ID是否已存在
-        result = db["collection"].get(include=["documents"])
+        result = db["collection"].get()
         if result and "ids" in result and doc_id in result["ids"]:
             raise HTTPException(status_code=400, detail="文档ID已存在")
         
         # 检查是否提供了embedding
         embedding = data.get("embedding")
         
-        # 如果没有提供embedding，使用外部Embedding API生成
-        if embedding is None:
+        # 如果没有提供embedding但提供了document，使用外部Embedding API生成
+        if embedding is None and document:
             from app.services.ai_clients import embedding_client
             log(f"ChromaDB - 开始为文档生成向量，ID: {doc_id}", LogType.DATABASE, "INFO")
             embedding = await embedding_client.embed(document)
             log(f"ChromaDB - 生成向量成功，维度: {len(embedding)}", LogType.DATABASE, "INFO")
         
-        # 添加文档，包含embedding
+        # 如果既没有提供embedding也没有提供document，抛出错误
+        if embedding is None and not document:
+            raise HTTPException(status_code=400, detail="Embeddings和Documents至少填写一个")
+        
+        # 添加文档
         # ChromaDB的metadatas参数是可选的，如果metadata为空则不传递
         metadata = data.get("metadata")
         
         add_params = {
             "ids": [doc_id],
-            "documents": [document],
             "embeddings": [embedding]
         }
+        
+        # 只有在document非空时才添加documents参数
+        if document:
+            add_params["documents"] = [document]
         
         # 只有在metadata非空时才添加metadatas参数
         if metadata:
             add_params["metadatas"] = [metadata]
         
-        log(f"ChromaDB - 添加文档参数: ids={add_params['ids']}, documents长度={len(add_params['documents'][0]) if add_params['documents'] else 0}, embeddings维度={len(add_params['embeddings'][0]) if add_params['embeddings'] else 0}, metadatas={'metadatas' in add_params}", LogType.DATABASE, "INFO")
+        log(f"ChromaDB - 添加文档参数: ids={add_params['ids']}, embeddings维度={len(add_params['embeddings'][0]) if add_params['embeddings'] else 0}, metadatas={'metadatas' in add_params}", LogType.DATABASE, "INFO")
         
         db["collection"].add(**add_params)
         
@@ -501,43 +618,33 @@ async def update_chromadb_document(
             raise HTTPException(status_code=400, detail="ChromaDB集合未初始化")
         
         document = data.get("document")
-        if not document:
-            raise HTTPException(status_code=400, detail="文档内容不能为空")
         
         # 检查是否提供了embedding
         embedding = data.get("embedding")
         
-        # 如果没有提供embedding，获取原有的embedding
-        if embedding is None:
-            log(f"ChromaDB - 获取原有embedding，ID: {document_id}", LogType.DATABASE, "INFO")
-            result = db["collection"].get(
-                ids=[document_id],
-                include=["embeddings"]
-            )
-            if result and "embeddings" in result and result["embeddings"]:
-                embedding = result["embeddings"][0]
-                log(f"ChromaDB - 获取原有embedding成功，维度: {len(embedding)}", LogType.DATABASE, "INFO")
-            else:
-                # 如果原有文档没有embedding，使用外部Embedding API生成
-                from app.services.ai_clients import embedding_client
-                log(f"ChromaDB - 原有文档无embedding，开始生成新向量，ID: {document_id}", LogType.DATABASE, "INFO")
-                embedding = await embedding_client.embed(document)
-                log(f"ChromaDB - 生成新向量成功，维度: {len(embedding)}", LogType.DATABASE, "INFO")
+        # 如果既没有提供embedding也没有提供document，抛出错误
+        if embedding is None and document is None:
+            raise HTTPException(status_code=400, detail="Embeddings和Documents至少填写一个")
         
-        # 更新文档，包含embedding
-        # ChromaDB的metadatas参数是可选的，如果metadata为空则不传递
-        metadata = data.get("metadata")
-        
+        # 准备更新参数
         update_params = {
-            "ids": [document_id],
-            "documents": [document],
-            "embeddings": [embedding]
+            "ids": [document_id]
         }
         
-        # 只有在metadata非空时才添加metadatas参数
-        if metadata:
+        # 如果提供了embedding，更新embedding
+        if embedding is not None:
+            update_params["embeddings"] = [embedding]
+        
+        # 如果提供了document，更新document
+        if document is not None:
+            update_params["documents"] = [document]
+        
+        # 处理metadata
+        metadata = data.get("metadata")
+        if metadata is not None:
             update_params["metadatas"] = [metadata]
         
+        # 执行更新
         db["collection"].update(**update_params)
         
         log(f"ChromaDB - 更新文档成功，ID: {document_id}", LogType.DATABASE, "INFO")

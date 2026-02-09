@@ -25,7 +25,7 @@ async def get_artifacts(
         cursor = db["sqlite"].cursor()
         
         # 构建查询条件
-        conditions = ["a.is_active = 1"]
+        conditions = []
         params = []
         
         if keyword:
@@ -36,10 +36,15 @@ async def get_artifacts(
             conditions.append("a.category = ?")
             params.append(category)
         
-        where_clause = " AND ".join(conditions)
+        # 构建WHERE子句
+        where_clause = ""
+        if conditions:
+            where_clause = " AND ".join(conditions)
         
         # 获取总数
-        count_query = f"SELECT COUNT(*) FROM artifacts a WHERE {where_clause}"
+        count_query = f"SELECT COUNT(*) FROM artifacts a"
+        if where_clause:
+            count_query += f" WHERE {where_clause}"
         cursor.execute(count_query, params)
         total_count = cursor.fetchone()[0]
         
@@ -48,10 +53,10 @@ async def get_artifacts(
         data_query = f"""
             SELECT id, title, content, source_type, source_path, category, tags, metadata, created_at, updated_at, is_active
             FROM artifacts a
-            WHERE {where_clause}
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
         """
+        if where_clause:
+            data_query += f" WHERE {where_clause}"
+        data_query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([size, offset])
         cursor.execute(data_query, params)
         
@@ -94,7 +99,7 @@ async def create_artifact(artifact: ArtifactCreate, db: DatabaseDep):
         # 插入资料
         cursor.execute("""
             INSERT INTO artifacts (title, content, category, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, 1, datetime('now', 'localtime'), datetime('now', 'localtime'))
         """, (artifact.title, artifact.content, artifact.category))
         
         db["sqlite"].commit()
@@ -188,7 +193,7 @@ async def get_artifact(artifact_id: int, db: DatabaseDep):
         cursor.execute("""
             SELECT id, title, content, category, created_at, updated_at, is_active
             FROM artifacts
-            WHERE id = ? AND is_active = 1
+            WHERE id = ?
         """, (artifact_id,))
         
         row = cursor.fetchone()
@@ -234,7 +239,7 @@ async def update_artifact(artifact_id: int, artifact: ArtifactCreate, db: Databa
         # 更新资料
         cursor.execute("""
             UPDATE artifacts
-            SET title = ?, content = ?, category = ?, updated_at = datetime('now')
+            SET title = ?, content = ?, category = ?, updated_at = datetime('now', 'localtime')
             WHERE id = ?
         """, (artifact.title, artifact.content, artifact.category, artifact_id))
         
@@ -287,13 +292,13 @@ async def delete_artifact(artifact_id: int, db: DatabaseDep):
         cursor = db["sqlite"].cursor()
         
         # 检查资料是否存在
-        cursor.execute("SELECT id FROM artifacts WHERE id = ? AND is_active = 1", (artifact_id,))
+        cursor.execute("SELECT id FROM artifacts WHERE id = ?", (artifact_id,))
         if not cursor.fetchone():
             log(f"SQLite - 资料不存在，ID: {artifact_id}", LogType.DATABASE, "WARNING")
             raise HTTPException(status_code=404, detail="资料不存在")
         
-        # 软删除资料
-        cursor.execute("UPDATE artifacts SET is_active = 0, updated_at = datetime('now') WHERE id = ?", (artifact_id,))
+        # 物理删除资料
+        cursor.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
         db["sqlite"].commit()
         log(f"SQLite - 删除资料成功，ID: {artifact_id}", LogType.DATABASE, "INFO")
         

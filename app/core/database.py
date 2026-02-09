@@ -75,8 +75,8 @@ class DatabaseManager:
                 category VARCHAR(64),
                 tags TEXT,
                 metadata TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
                 is_active BOOLEAN DEFAULT 1
             )
         """)
@@ -123,7 +123,7 @@ class DatabaseManager:
                 content TEXT NOT NULL,
                 token_count INTEGER,
                 metadata TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
                 FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE
             )
         """)
@@ -166,7 +166,7 @@ class DatabaseManager:
                 artifact_count INTEGER,
                 response_time FLOAT,
                 user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
             )
         """)
         
