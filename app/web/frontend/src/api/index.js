@@ -1,8 +1,12 @@
 import axios from 'axios'
 
 // 创建axios实例
+// 根据当前URL路径判断API基础路径
+const isSrsPath = window.location.pathname.startsWith('/srs/');
+const baseURL = isSrsPath ? '/srs/api/v1' : '/api/v1';
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: baseURL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'

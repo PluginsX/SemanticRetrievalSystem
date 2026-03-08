@@ -94,6 +94,41 @@ if config.WEB_SERVICE_ENABLED:
         allow_headers=["*"],
     )
 
+# 处理/srs/前缀的中间件
+@app.middleware("http")
+async def srs_prefix_middleware(request, call_next):
+    """处理/srs/前缀的中间件"""
+    # 检查请求路径是否以/srs/开头
+    if request.url.path.startswith("/srs/"):
+        # 创建新的请求对象，移除/srs/前缀
+        from starlette.requests import Request
+        from starlette.datastructures import URL
+        
+        # 构建新的路径
+        new_path = request.url.path[4:]  # 移除/srs/前缀
+        if new_path == "":
+            new_path = "/"
+        
+        # 构建新的URL
+        new_url = URL(
+            scheme=request.url.scheme,
+            netloc=request.url.netloc,
+            path=new_path,
+            query=request.url.query,
+            fragment=request.url.fragment
+        )
+        
+        # 创建新的请求对象
+        scope = dict(request.scope)
+        scope["path"] = new_path
+        scope["raw_path"] = new_path.encode()
+        
+        # 使用新的请求对象
+        request = Request(scope, receive=request.receive)
+    
+    response = await call_next(request)
+    return response
+
 # API访问日志中间件
 @app.middleware("http")
 async def api_access_log_middleware(request, call_next):
@@ -216,6 +251,10 @@ if config.WEB_SERVICE_ENABLED:
         @app.get("/{full_path:path}")
         async def serve_frontend(full_path: str):
             """为前端单页应用提供服务"""
+            # 处理/srs/路径前缀
+            if full_path.startswith("srs/"):
+                full_path = full_path[4:]  # 移除'srs/'前缀
+            
             # 如果请求的是API路径或其他系统路径，则跳过
             if (full_path.startswith("api/") or 
                 full_path.startswith("docs") or 
@@ -236,6 +275,8 @@ if config.WEB_SERVICE_ENABLED:
             
             # 否则提供index.html（SPA路由）
             return FileResponse(index_path)
+        
+
 
 if __name__ == "__main__":
     uvicorn.run(
